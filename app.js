@@ -1,7 +1,8 @@
 // SAM customer app: products by category, cart → order or proforma, orders, festivals, invoices and balance.
-import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, countUpOnEnter } from "/common.js?v=4";
+import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, countUpOnEnter } from "/common.js?v=5";
+import { offerLabel } from "/proforma.js?v=5";
 
-const S = { user: null, settings: {}, cats: [], products: [], festivals: [], orders: null, account: null, tab: "products", cat: "all", q: "", cart: {}, ordersSeg: "order" };
+const S = { user: null, settings: {}, cats: [], products: [], festivals: [], orders: null, account: null, tab: "products", cat: "all", q: "", cart: {}, unseen: 0 };
 const app = $("#app");
 const cartKey = () => "sam.cart." + (S.user?.id || 0);
 const saveCart = () => { try { localStorage.setItem(cartKey(), JSON.stringify(S.cart)); } catch {} };
@@ -44,7 +45,7 @@ function loginView(msg = "") {
 function shell() {
   app.innerHTML = `<header class="top"><span class="brand">${esc(S.settings.brand || "SAM")}</span><span class="who">${esc(S.user.name)}</span></header>
     <main id="main"></main>
-    <nav class="tabs" aria-label="بخش‌ها">${TABS.map(([k, t]) => `<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${t}${k === "cart" ? '<span class="badge" id="cb" hidden></span>' : ""}</button>`).join("")}</nav>`;
+    <nav class="tabs" aria-label="بخش‌ها">${TABS.map(([k, t]) => `<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${t}${k === "cart" ? '<span class="badge" id="cb" hidden></span>' : k === "orders" ? '<span class="badge" id="ob" hidden></span>' : ""}</button>`).join("")}</nav>`;
   $$(".tabs button").forEach(b => b.onclick = () => go(b.dataset.tab));
 }
 function go(tab) {
@@ -127,47 +128,70 @@ function viewCart() {
       <b class="num">${fa(p.price * q)}</b></div></div></div>`).join("")}</div>
     <div class="card sum"><div class="tot"><span>جمع کل</span><span class="num">${money(cartTotal(), cur())}</span></div>
       <textarea id="note" placeholder="توضیح برای سفارش (اختیاری)" maxlength="500" rows="2" style="min-height:60px"></textarea>
-      <div class="acts"><button class="btn" type="button" id="pf">پیش‌فاکتور</button><button class="btn primary" type="button" id="ok">ثبت سفارش</button></div></div>`;
+      <p class="muted" style="font-size:12.5px;margin:0">آفر، مالیات و تخفیف را کارشناس فروش بعد از تایید در پیش‌فاکتور اعمال می‌کند.</p>
+      <button class="btn primary" type="button" id="ok" style="width:100%">ثبت سفارش</button></div>`;
   bindSteppers($("#lines"), () => { const n = $("#note").value; viewCart(); if ($("#note")) $("#note").value = n; });
   $("#clr").onclick = () => { if (confirm("سبد خالی شود؟")) { S.cart = {}; saveCart(); badge(); viewCart(); } };
-  const send = kind => async e => {
+  $("#ok").onclick = async e => {
     const b = e.currentTarget; b.disabled = true;
     try {
-      const o = await api("/api/orders", { kind, items: lines.map(l => ({ id: l.p.id, qty: l.q })), note: $("#note").value });
+      const o = await api("/api/orders", { items: lines.map(l => ({ id: l.p.id, qty: l.q })), note: $("#note").value });
       S.cart = {}; saveCart(); badge(); S.orders = null;
-      toast(kind === "order" ? `سفارش ${fa(o.id)} ثبت شد` : `پیش‌فاکتور ${fa(o.id)} آماده شد`);
-      S.ordersSeg = kind === "order" ? "order" : "proforma"; go("orders"); openOrder(o);
+      go("orders"); queuedNotice(o);
     } catch (err) { toast(err.message, true); b.disabled = false; }
   };
-  $("#pf").onclick = send("proforma"); $("#ok").onclick = send("order");
 }
 
 // ---------- orders ----------
-const statusPill = o => `<span class="pill ${o.status === "cancelled" ? "bad" : o.status === "done" || o.status === "sent" ? "ok" : o.status === "open" ? "acc" : "warn"}">${STATUS[o.status]}</span>`;
+const statusPill = o => `<span class="pill ${o.status === "cancelled" ? "bad" : o.status === "done" || o.status === "sent" ? "ok" : o.status === "confirmed" ? "acc" : "warn"}">${STATUS[o.status] || o.status}</span>`;
+// right after ordering (owner, 2026-11-24): no proforma yet; the sales team approves and calls
+function queuedNotice(o) {
+  const d = document.createElement("dialog");
+  d.innerHTML = `<div class="dlg" style="text-align:center;padding:28px 22px">
+    <div class="done-mark" aria-hidden="true"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg></div>
+    <h3 style="margin:14px 0 6px">سفارش ${fa(o.id)} ثبت شد</h3>
+    <p style="margin:0 0 6px">سفارش شما در صف تایید است و کارشناس فروش با شما تماس می‌گیرد.</p>
+    <p class="muted" style="margin:0;font-size:13.5px">پیش‌فاکتور بعد از تایید، در «سفارش‌ها» برایتان می‌آید.</p>
+    <div class="dlg-foot" style="justify-content:center"><button class="btn primary" type="button" data-x>باشه</button></div></div>`;
+  document.body.append(d); d.showModal();
+  d.onclose = () => d.remove(); d.onclick = e => { if (e.target === d || e.target.closest("[data-x]")) d.close(); };
+}
+function ordersBadge(n) { const b = $("#ob"); if (!b) return; S.unseen = n; b.hidden = !n; b.textContent = fa(n); }
 async function viewOrders() {
   const m = $("#main");
-  m.innerHTML = `<div class="h"><h2>سفارش‌ها</h2></div><div class="seg" role="group"><button type="button" data-s="order">سفارش‌ها</button><button type="button" data-s="proforma">پیش‌فاکتورها</button></div><div id="ol"><div class="loading" role="status" aria-label="در حال دریافت">در حال دریافت…</div></div>`;
-  $$("[data-s]", m).forEach(b => { b.setAttribute("aria-pressed", b.dataset.s === S.ordersSeg); b.onclick = () => { S.ordersSeg = b.dataset.s; viewOrders(); }; });
+  m.innerHTML = `<div class="h"><h2>سفارش‌ها</h2></div><div id="ol"><div class="loading" role="status" aria-label="در حال دریافت">در حال دریافت…</div></div>`;
   try { S.orders = S.orders || await api("/api/orders"); } catch (e) { $("#ol").innerHTML = `<p class="empty">${esc(e.message)}</p>`; return; }
-  const list = S.orders.filter(o => o.kind === S.ordersSeg);
-  $("#ol").innerHTML = list.length ? list.map(o => `<button class="card o" type="button" data-o="${o.id}"><div class="r"><b>${o.kind === "proforma" ? "پیش‌فاکتور" : "سفارش"} ${fa(o.id)}</b>${statusPill(o)}</div>
-    <div class="r"><span>${faDate(o.created)} · ${fa(o.items.length)} قلم</span><b class="num" style="color:var(--ink)">${money(o.total, cur())}</b></div></button>`).join("")
-    : `<p class="empty">${S.ordersSeg === "order" ? "هنوز سفارشی ثبت نکرده‌اید." : "پیش‌فاکتوری ندارید."}</p>`;
+  const list = S.orders.filter(o => o.kind === "order" || o.proforma);
+  ordersBadge(list.filter(o => !o.seen).length);
+  $("#ol").innerHTML = list.length ? list.map(o => `<button class="card o${o.seen ? "" : " fresh"}" type="button" data-o="${o.id}"><div class="r"><b>سفارش ${fa(o.id)}</b>${statusPill(o)}</div>
+    <div class="r"><span>${faDate(o.created)} · ${fa(o.items.length)} قلم${o.proforma ? " · پیش‌فاکتور آماده" : ""}</span><b class="num" style="color:var(--ink)">${money(o.total, cur())}</b></div></button>`).join("")
+    : `<p class="empty">هنوز سفارشی ثبت نکرده‌اید.</p>`;
   $$("[data-o]").forEach(b => b.onclick = () => openOrder(S.orders.find(o => o.id === +b.dataset.o)));
 }
+// a proforma: each item, then the same item as its offer (free); goods total, tax, margin, amount due
+function proformaTable(pf, cur) {
+  return `<table class="items pf">${pf.lines.map(l => `<tr><td>${esc(l.name)}<div class="muted" style="font-size:12px">${fa(l.qty)} × ${fa(l.price)}</div></td><td class="num">${fa(l.sum)}</td></tr>
+      ${l.free ? `<tr class="offer"><td><span class="pill acc">آفر ${offerLabel(l.offer)}</span> ${esc(l.name)}<div class="muted" style="font-size:12px">${fa(l.free)} عدد رایگان</div></td><td class="num muted">—</td></tr>` : ""}`).join("")}
+    <tr class="t1"><td>جمع کالا</td><td class="num">${fa(pf.subtotal)}</td></tr>
+    <tr><td>مالیات ${fa(pf.taxPct)}٪</td><td class="num">${fa(pf.tax)}</td></tr>
+    ${pf.marginPct ? `<tr><td>مارجین ${fa(pf.marginPct)}٪</td><td class="num">− ${fa(pf.margin)}</td></tr>` : ""}
+    <tr class="t2"><td><b>مبلغ قابل پرداخت</b></td><td class="num"><b>${money(pf.total, cur)}</b></td></tr></table>`;
+}
 function openOrder(o) {
+  if (o.proforma && !o.seen) { api(`/api/orders/${o.id}/seen`, {}).catch(() => {}); o.seen = true; ordersBadge(Math.max(0, (S.unseen || 1) - 1)); $(`[data-o="${o.id}"]`)?.classList.remove("fresh"); }
+  const pf = o.proforma;
   const d = document.createElement("dialog");
-  d.innerHTML = `<div class="dlg"><div class="dlg-head"><h3>${o.kind === "proforma" ? "پیش‌فاکتور" : "سفارش"} ${fa(o.id)}</h3>${statusPill(o)}</div>
+  d.innerHTML = `<div class="dlg"><div class="dlg-head"><h3>${pf ? "پیش‌فاکتور" : "سفارش"} ${fa(o.id)}</h3>${statusPill(o)}</div>
     <div class="muted" style="font-size:13px">${faDate(o.created, true)}</div>
-    <table class="items">${o.items.map(i => `<tr><td>${esc(i.name)}<div class="muted" style="font-size:12px">${fa(i.qty)} × ${fa(i.price)}</div></td><td class="num">${fa(i.sum)}</td></tr>`).join("")}
-    <tr><td><b>جمع کل</b></td><td class="num"><b>${money(o.total, cur())}</b></td></tr></table>
+    ${pf ? proformaTable(pf, cur()) : `
+      ${o.status === "new" ? `<p class="queued">این سفارش در صف تایید است و کارشناس فروش با شما تماس می‌گیرد. پیش‌فاکتور بعد از تایید اینجا می‌آید.</p>` : ""}
+      <table class="items">${o.items.map(i => `<tr><td>${esc(i.name)}<div class="muted" style="font-size:12px">${fa(i.qty)} × ${fa(i.price)}</div></td><td class="num">${fa(i.sum)}</td></tr>`).join("")}
+      <tr><td><b>جمع سفارش</b></td><td class="num"><b>${money(o.items.reduce((a, i) => a + i.sum, 0), cur())}</b></td></tr></table>`}
     ${o.returns?.length ? `<p class="muted">مرجوعی: ${o.returns.map(r => `${esc(r.name)} × ${fa(r.qty)}`).join("، ")}</p>` : ""}
     ${o.note ? `<p class="muted">توضیح: ${esc(o.note)}</p>` : ""}
-    ${o.kind === "proforma" ? `<p class="muted" style="font-size:13px">با «ثبت سفارش»، قیمت‌ها به‌روز می‌شوند.</p>` : ""}
     <div class="dlg-foot">
-      ${o.kind === "proforma" && o.status === "open" ? `<button class="btn primary" type="button" data-a="submit">ثبت سفارش</button>` : ""}
-      <button class="btn" type="button" data-a="print">چاپ / PDF</button>
-      ${["new", "open"].includes(o.status) ? `<button class="btn ghost danger" type="button" data-a="cancel">لغو</button>` : ""}
+      ${pf ? `<button class="btn primary" type="button" data-a="print">چاپ / PDF</button>` : ""}
+      ${o.status === "new" ? `<button class="btn ghost danger" type="button" data-a="cancel">لغو سفارش</button>` : ""}
       <button class="btn ghost" type="button" data-a="close">بستن</button></div></div>`;
   document.body.append(d); d.showModal();
   d.onclose = () => d.remove();
@@ -177,8 +201,7 @@ function openOrder(o) {
     if (a === "close") return d.close();
     if (a === "print") return printDoc(o, S.settings, S.user);
     try {
-      if (a === "submit") { const n = await api(`/api/orders/${o.id}/submit`, {}); toast(`سفارش ${fa(n.id)} ثبت شد`); S.ordersSeg = "order"; }
-      if (a === "cancel") { if (!confirm("لغو شود؟")) return; await api(`/api/orders/${o.id}/cancel`, {}); toast("لغو شد"); }
+      if (a === "cancel") { if (!confirm("سفارش لغو شود؟")) return; await api(`/api/orders/${o.id}/cancel`, {}); toast("لغو شد"); }
       S.orders = null; d.close(); viewOrders();
     } catch (err) { toast(err.message, true); }
   };
@@ -258,7 +281,12 @@ async function boot() {
     const c = await api("/api/catalog");
     Object.assign(S, { cats: c.cats, products: c.products, festivals: c.festivals, settings: c.settings });
     for (const id of Object.keys(S.cart)) if (!pById(id) || pById(id).price == null) delete S.cart[id];
-    shell(); badge();
+    shell(); badge(); ordersBadge(c.unseen || 0);
+    // back in the app (e.g. after the sales call): check for a newly issued proforma
+    document.addEventListener("visibilitychange", async () => {
+      if (document.visibilityState !== "visible") return;
+      try { const n = (await api("/api/catalog")).unseen || 0; if (n !== S.unseen) { S.orders = null; ordersBadge(n); if (n) toast("پیش‌فاکتور جدید در «سفارش‌ها»"); } } catch {}
+    });
     const want = location.hash.slice(1);
     go(TABS.some(t => t[0] === want) ? want : "products");
   } catch (e) { if (!token.get()) loginView(); else app.innerHTML = `<p class="empty">${esc(e.message)}<br><button class="btn" style="margin-top:12px" onclick="location.reload()">دوباره</button></p>`; }

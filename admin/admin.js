@@ -1,5 +1,6 @@
 // SAM admin panel: orders, agency report, products, categories, customers, festivals, file imports, settings.
-import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, shrinkImage, fileB64, countUpOnEnter } from "/common.js?v=4";
+import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, shrinkImage, fileB64, countUpOnEnter } from "/common.js?v=5";
+import { OFFERS, offerLabel, buildProforma } from "/proforma.js?v=5";
 
 const app = $("#app");
 const S = { settings: {}, cats: [], products: [], customers: [], orders: [], me: null };
@@ -21,7 +22,7 @@ function dialog(html, onSubmit) {
     if (e.submitter?.value !== "ok") return;
     e.preventDefault();
     const b = e.submitter; b.disabled = true;
-    try { if ((await onSubmit(f, d)) !== false) d.close(); } catch (err) { toast(err.message, true); } finally { b.disabled = false; }
+    try { if ((await onSubmit(f, d, b)) !== false) d.close(); } catch (err) { toast(err.message, true); } finally { b.disabled = false; }
   };
   return d;
 }
@@ -64,7 +65,18 @@ async function route() {
   m.classList.remove("enter"); void m.offsetWidth; m.classList.add("enter");
   countUpOnEnter(m);
 }
-async function refreshBadge() { try { const o = await api("/api/admin/overview"); const b = $("#nn"); if (b) { b.hidden = !o.newOrders; b.textContent = fa(o.newOrders); } return o; } catch { return null; } }
+let lastNew = null;
+async function refreshBadge() {
+  try {
+    const o = await api("/api/admin/overview"), b = $("#nn");
+    if (b) { b.hidden = !o.newOrders; b.textContent = fa(o.newOrders); }
+    document.title = (o.newOrders ? `(${fa(o.newOrders)}) ` : "") + "SAM پنل مدیریت";
+    if (lastNew != null && o.newOrders > lastNew) { toast(`سفارش جدید رسید (${fa(o.newOrders)} در صف تایید)`); chime(); if (location.hash.slice(1) === "orders") route(); }
+    lastNew = o.newOrders;
+    return o;
+  } catch { return null; }
+}
+function chime() { try { const a = new (window.AudioContext || window.webkitAudioContext)(), g = a.createGain(); g.connect(a.destination); [660, 880].forEach((f, i) => { const o = a.createOscillator(); o.frequency.value = f; o.connect(g); g.gain.setValueAtTime(.08, a.currentTime + i * .15); o.start(a.currentTime + i * .15); o.stop(a.currentTime + i * .15 + .12); }); } catch {} }
 
 const VIEWS = {};
 
@@ -82,41 +94,69 @@ VIEWS.home = async m => {
 };
 
 // ---------- orders ----------
-const pill = s => `<span class="pill ${s === "cancelled" ? "bad" : s === "done" || s === "sent" ? "ok" : s === "open" ? "acc" : "warn"}">${STATUS[s]}</span>`;
+const pill = s => `<span class="pill ${s === "cancelled" ? "bad" : s === "done" || s === "sent" ? "ok" : s === "confirmed" ? "acc" : "warn"}">${STATUS[s] || s}</span>`;
 VIEWS.orders = async m => {
   S.orders = await api("/api/admin/orders");
-  let f = { q: "", kind: "order", st: "" };
-  m.innerHTML = page("سفارش‌ها", "سفارش‌ها و پیش‌فاکتورهای مشتری‌ها") + `<div class="tools"><input type="search" placeholder="جستجوی مشتری یا شماره" id="q"><select id="kind"><option value="order">سفارش‌ها</option><option value="proforma">پیش‌فاکتورها</option></select>
+  let f = { q: "", st: "" };
+  m.innerHTML = page("سفارش‌ها", "سفارش‌های در صف تایید بالای فهرست‌اند. روی هر سفارش بزنید، آفرها را انتخاب کنید و پیش‌فاکتور را صادر کنید.") + `<div class="tools"><input type="search" placeholder="جستجوی مشتری یا شماره" id="q">
     <select id="st"><option value="">همهٔ وضعیت‌ها</option>${["new", "confirmed", "sent", "done", "cancelled"].map(s => `<option value="${s}">${STATUS[s]}</option>`).join("")}</select></div><div class="card scroll-x" id="ol"></div>`;
   const draw = () => {
     const q = latin(f.q).trim();
-    const list = S.orders.filter(o => o.kind === f.kind && (!f.st || o.status === f.st) && (!q || o.uname.includes(q) || String(o.id) === q));
-    $("#ol").innerHTML = list.length ? `<table class="t"><thead><tr><th>شماره</th><th>مشتری</th><th>تاریخ</th><th>اقلام</th><th>مبلغ (${esc(cur())})</th><th>وضعیت</th></tr></thead><tbody>${list.map(o => `<tr class="click" data-o="${o.id}"><td>${fa(o.id)}</td><td>${esc(o.uname)}<div class="muted" style="font-size:12px">${esc(o.ucity || "")}</div></td><td>${faDate(o.created)}</td><td>${fa(o.items.length)}</td><td class="num">${fa(o.total)}</td><td>${pill(o.status)}${o.returns.length ? ' <span class="pill bad">مرجوعی</span>' : ""}</td></tr>`).join("")}</tbody></table>` : `<p class="empty">موردی نیست.</p>`;
+    const list = S.orders.filter(o => o.kind === "order" && (!f.st || o.status === f.st) && (!q || o.uname.includes(q) || String(o.id) === q)).sort((a, b) => (b.status === "new") - (a.status === "new") || b.id - a.id);
+    $("#ol").innerHTML = list.length ? `<table class="t"><thead><tr><th>شماره</th><th>مشتری</th><th>تاریخ</th><th>اقلام</th><th>مبلغ (${esc(cur())})</th><th>وضعیت</th></tr></thead><tbody>${list.map(o => `<tr class="click${o.status === "new" ? " pending" : ""}" data-o="${o.id}"><td>${fa(o.id)}</td><td>${esc(o.uname)}<div class="muted" style="font-size:12px">${esc(o.ucity || "")}</div></td><td>${faDate(o.created)}</td><td>${fa(o.items.length)}</td><td class="num">${fa(o.total)}</td><td>${pill(o.status)}${o.returns.length ? ' <span class="pill bad">مرجوعی</span>' : ""}</td></tr>`).join("")}</tbody></table>` : `<p class="empty">موردی نیست.</p>`;
     $$("[data-o]").forEach(r => r.onclick = () => openOrder(S.orders.find(o => o.id === +r.dataset.o), m));
   };
   $("#q").oninput = e => { f.q = e.target.value; draw(); };
-  $("#kind").onchange = e => { f.kind = e.target.value; draw(); };
   $("#st").onchange = e => { f.st = e.target.value; draw(); };
   draw();
 };
+const offerSelect = (name, val) => `<select name="${name}" class="offer-sel">${OFFERS.map(n => `<option value="${n}" ${n === val ? "selected" : ""}>${offerLabel(n)}</option>`).join("")}</select>`;
 function openOrder(o, m) {
-  const isOrder = o.kind === "order";
-  const d = dialog(`<div class="dlg-head"><h3>${isOrder ? "سفارش" : "پیش‌فاکتور"} ${fa(o.id)}</h3>${pill(o.status)}</div>
+  const pf = o.proforma, editing = o.status !== "cancelled";
+  const startOffers = Object.fromEntries(o.items.map(i => [i.id, pf ? (pf.lines.find(l => l.id === i.id)?.offer ?? 0) : (i.sugOffer ?? 0)]));
+  const d = dialog(`<div class="dlg-head"><h3>سفارش ${fa(o.id)}</h3>${pill(o.status)}</div>
     <p style="margin:0 0 8px"><b>${esc(o.uname)}</b> <span class="muted">${esc(o.ucity || "")} ${o.uphone ? "· " + esc(faDigits(o.uphone)) : ""}</span><br><span class="muted" style="font-size:13px">${faDate(o.created, true)}</span></p>
-    <div class="scroll-x"><table class="t"><thead><tr><th>کالا</th><th>تعداد</th><th>فی</th><th>جمع</th></tr></thead><tbody>${o.items.map(i => `<tr><td>${esc(i.name)}<div class="muted" style="font-size:12px">${esc(faDigits(i.code))}</div></td><td>${fa(i.qty)}</td><td class="num">${fa(i.price)}</td><td class="num">${fa(i.sum)}</td></tr>`).join("")}
-    <tr><td colspan="3"><b>جمع کل</b></td><td class="num"><b>${fa(o.total)}</b></td></tr></tbody></table></div>
-    ${o.note ? `<p>توضیح مشتری: ${esc(o.note)}</p>` : ""}
-    ${o.returns.length ? `<p><b>مرجوعی‌ها:</b><br>${o.returns.map(r => `${esc(r.name)} × ${fa(r.qty)} = ${money(r.amount, cur())} <span class="muted">(${faDate(r.date)}${r.note ? " · " + esc(r.note) : ""})</span>`).join("<br>")}</p>` : ""}
-    ${isOrder ? `<label class="field"><span>وضعیت</span><select name="status">${["new", "confirmed", "sent", "done", "cancelled"].map(s => `<option value="${s}" ${s === o.status ? "selected" : ""}>${STATUS[s]}</option>`).join("")}</select></label>
+    ${o.note ? `<p class="muted" style="margin:0 0 8px">توضیح مشتری: ${esc(o.note)}</p>` : ""}
+    ${o.status === "new" ? `<p class="queued-admin">در صف تایید. آفر هر کالا را انتخاب کنید، مالیات و مارجین را بررسی کنید و پیش‌فاکتور را صادر کنید.</p>` : ""}
+    <div class="scroll-x"><table class="t pf-edit"><thead><tr><th>کالا</th><th>تعداد</th><th>فی</th><th>جمع</th><th>آفر</th><th>رایگان</th></tr></thead><tbody>
+      ${o.items.map(i => `<tr data-id="${i.id}"><td>${esc(i.name)}<div class="muted" style="font-size:12px">${esc(faDigits(i.code))}${i.sugOffer ? ` · پیشنهاد: ${offerLabel(i.sugOffer)}` : ""}</div></td><td>${fa(i.qty)}</td><td class="num">${fa(i.price)}</td><td class="num">${fa(i.sum)}</td>
+        <td>${editing ? offerSelect("of-" + i.id, startOffers[i.id]) : offerLabel(startOffers[i.id])}</td><td class="num" data-free="${i.id}">—</td></tr>`).join("")}</tbody></table></div>
+    <div class="grid2" style="margin-top:12px"><label class="field"><span>مالیات (٪)</span><input name="tax" type="text" inputmode="decimal" value="${pf ? pf.taxPct : (S.settings.taxPct ?? 10)}" ${editing ? "" : "disabled"}></label>
+      <label class="field"><span>مارجین این مشتری (٪)</span><input name="margin" type="text" inputmode="decimal" value="${pf ? pf.marginPct : (o.umargin || 0)}" ${editing ? "" : "disabled"}></label></div>
+    <div class="pf-sum" id="pfsum"></div>
+    ${pf ? `<p class="muted" style="font-size:12.5px">پیش‌فاکتور صادر شده: ${faDate(pf.issued, true)}. با «صدور دوباره»، نسخهٔ تازه برای مشتری می‌رود.</p>` : ""}
+    ${o.status !== "new" && o.status !== "cancelled" ? `<div class="grid2"><label class="field"><span>وضعیت</span><select name="status">${["confirmed", "sent", "done", "cancelled"].map(s => `<option value="${s}" ${s === o.status ? "selected" : ""}>${STATUS[s]}</option>`).join("")}</select></label></div>
     <details><summary style="cursor:pointer;font-weight:600;margin-bottom:8px">ثبت مرجوعی</summary><div class="grid2"><label class="field"><span>کالا</span><select name="rid"><option value="">—</option>${o.items.map(i => `<option value="${i.id}">${esc(i.name)}</option>`).join("")}</select></label>
-      <label class="field"><span>تعداد</span><input name="rqty" type="text" inputmode="numeric"></label></div><label class="field"><span>علت (اختیاری)</span><input name="rnote" type="text"></label></details>` : `<p class="muted">پیش‌فاکتور است؛ وقتی مشتری «ثبت سفارش» بزند، در سفارش‌ها می‌آید.</p>`}`
-    + foot(isOrder ? "ذخیره" : "بستن", `<button class="btn" type="button" data-print>چاپ / PDF</button>`), async f => {
-    if (!isOrder) return;
-    const body = { status: f.status.value };
-    if (f.rid.value && numIn(f.rqty.value)) body.addReturn = { id: +f.rid.value, qty: numIn(f.rqty.value), note: f.rnote.value };
-    await api(`/api/admin/orders/${o.id}`, body); toast("ذخیره شد"); refreshBadge(); VIEWS.orders(m);
+      <label class="field"><span>تعداد</span><input name="rqty" type="text" inputmode="numeric"></label></div><label class="field"><span>علت (اختیاری)</span><input name="rnote" type="text"></label></details>` : ""}
+    ${o.returns.length ? `<p><b>مرجوعی‌ها:</b><br>${o.returns.map(r => `${esc(r.name)} × ${fa(r.qty)} = ${money(r.amount, cur())} <span class="muted">(${faDate(r.date)}${r.note ? " · " + esc(r.note) : ""})</span>`).join("<br>")}</p>` : ""}`
+    + `<div class="dlg-foot">${editing ? `<button class="btn primary" value="ok" data-act="issue">${pf ? "صدور دوباره" : "تایید و صدور پیش‌فاکتور"}</button>` : ""}
+       ${o.status !== "new" && o.status !== "cancelled" ? `<button class="btn" value="ok" data-act="save">ذخیرهٔ وضعیت</button>` : ""}
+       ${pf ? `<button class="btn" type="button" data-print>چاپ / PDF</button>` : ""}
+       ${o.status === "new" ? `<button class="btn ghost danger" value="ok" data-act="cancel">لغو سفارش</button>` : ""}
+       <button class="btn ghost" value="x" formnovalidate>بستن</button></div>`, async (f, dl, sub) => {
+    const act = sub?.dataset.act;
+    if (act === "cancel") { if (!confirm("این سفارش لغو شود؟")) return false; await api(`/api/admin/orders/${o.id}`, { status: "cancelled" }); toast("لغو شد"); }
+    else if (act === "issue") {
+      const r = await api(`/api/admin/orders/${o.id}/proforma`, { offers: readOffers(f), taxPct: numIn(f.tax.value), marginPct: numIn(f.margin.value) });
+      toast(`پیش‌فاکتور ${fa(r.id)} صادر شد و برای مشتری رفت`);
+    } else if (act === "save") {
+      const body = { status: f.status.value };
+      if (f.rid && f.rid.value && numIn(f.rqty.value)) body.addReturn = { id: +f.rid.value, qty: numIn(f.rqty.value), note: f.rnote.value };
+      await api(`/api/admin/orders/${o.id}`, body); toast("ذخیره شد");
+    }
+    refreshBadge(); VIEWS.orders(m);
   });
-  $("[data-print]", d).onclick = () => printDoc(o, S.settings, { name: o.uname, city: o.ucity, phone: o.uphone });
+  const f = $("form", d);
+  const readOffers = f => Object.fromEntries(o.items.map(i => [i.id, f["of-" + i.id] ? +f["of-" + i.id].value : startOffers[i.id]]));
+  const preview = () => {
+    const pv = buildProforma(o.items, { offers: readOffers(f), taxPct: numIn(f.tax.value), marginPct: numIn(f.margin.value) });
+    for (const l of pv.lines) { const c = $(`[data-free="${l.id}"]`, d); if (c) c.textContent = l.free ? fa(l.free) + " عدد" : "—"; }
+    $("#pfsum", d).innerHTML = `<div><span>جمع کالا</span><b class="num">${fa(pv.subtotal)}</b></div><div><span>مالیات ${fa(pv.taxPct)}٪</span><b class="num">+ ${fa(pv.tax)}</b></div>
+      <div><span>مارجین ${fa(pv.marginPct)}٪</span><b class="num">− ${fa(pv.margin)}</b></div><div class="tot"><span>مبلغ قابل پرداخت</span><b class="num">${money(pv.total, cur())}</b></div>
+      ${pv.freeTotal ? `<div><span>اقلام آفر</span><b class="num">${fa(pv.freeTotal)} عدد رایگان</b></div>` : ""}`;
+  };
+  f.addEventListener("input", preview); f.addEventListener("change", preview); preview();
+  $("[data-print]", d) && ($("[data-print]", d).onclick = () => printDoc(o, S.settings, { name: o.uname, city: o.ucity, phone: o.uphone }));
 }
 
 // ---------- agency report ----------
@@ -164,13 +204,14 @@ function editProduct(p, m) {
     <label class="field"><span>نام محصول</span><input name="name" type="text" value="${esc(p.name)}" required></label>
     <div class="grid2"><label class="field"><span>کد کالا</span><input name="code" type="text" value="${esc(p.code)}" dir="ltr"></label>
     <label class="field"><span>دسته</span><select name="cat"><option value="">بدون دسته</option>${S.cats.map(c => `<option value="${c.id}" ${c.id === p.cat ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+    <label class="field"><span>آفر این کالا</span>${offerSelect("offer", p.offer || 0)}</label>
     <label class="field"><span>تعداد در کارتن</span><input name="pack" type="text" inputmode="numeric" value="${esc(p.pack)}"></label>
     <label class="field"><span>واحد</span><input name="unit" type="text" value="${esc(p.unit)}"></label></div>
     <div class="field"><span>قیمت هر سطح (${esc(cur())})</span><div class="prices">${levels().map(l => `<label class="field" style="margin:0"><span>${esc(l.name)}</span><input type="text" inputmode="numeric" data-lv="${esc(l.k)}" value="${p.prices[l.k] != null ? p.prices[l.k] : ""}"></label>`).join("")}</div></div>
     <label class="field"><span>توضیح (اختیاری)</span><textarea name="descr">${esc(p.descr || "")}</textarea></label>
     <label class="check"><input type="checkbox" name="active" ${p.active ? "checked" : ""}> در اپ نمایش داده شود</label>` + foot(), async f => {
     const prices = {}; $$("[data-lv]", f).forEach(i => { if (i.value.trim()) prices[i.dataset.lv] = numIn(i.value); });
-    await api("/api/admin/products", { id: p.id, name: f.name.value, code: latin(f.code.value), cat: f.cat.value || null, pack: numIn(f.pack.value) || 1, unit: f.unit.value, prices, descr: f.descr.value, img, active: f.active.checked });
+    await api("/api/admin/products", { id: p.id, name: f.name.value, code: latin(f.code.value), cat: f.cat.value || null, pack: numIn(f.pack.value) || 1, unit: f.unit.value, prices, descr: f.descr.value, img, active: f.active.checked, offer: +f.offer.value });
     toast("ذخیره شد"); VIEWS.products(m);
   });
   pickImage(d, "#pimg", url => { img = url; $("#pi", d).innerHTML = thumb(url); });
@@ -210,7 +251,7 @@ VIEWS.customers = async m => {
   const draw = () => {
     const qq = latin(q).trim();
     const list = S.customers.filter(c => !qq || c.name.includes(qq) || c.city.includes(qq) || latin(c.code).includes(qq) || c.username.includes(qq.toLowerCase()));
-    $("#cl").innerHTML = list.length ? `<table class="t"><thead><tr><th>نام</th><th>شهر</th><th>کد حسابداری</th><th>سطح قیمت</th><th>نام کاربری</th><th></th></tr></thead><tbody>${list.map(c => `<tr class="click" data-c="${c.id}" style="${c.active ? "" : "opacity:.5"}"><td>${esc(c.name)}<div class="muted" style="font-size:12px">${esc(c.contact)} ${c.phone ? esc(faDigits(c.phone)) : ""}</div></td><td>${esc(c.city)}</td><td>${esc(faDigits(c.code)) || '<span class="pill warn">ندارد</span>'}</td><td>${esc(levels().find(l => l.k === c.level)?.name || c.level)}</td><td dir="ltr" style="text-align:end">${esc(c.username)}</td><td>${c.active ? "" : '<span class="pill">غیرفعال</span>'}</td></tr>`).join("")}</tbody></table>` : `<p class="empty">مشتری‌ای نیست.</p>`;
+    $("#cl").innerHTML = list.length ? `<table class="t"><thead><tr><th>نام</th><th>شهر</th><th>کد حسابداری</th><th>سطح قیمت</th><th>آفر / مارجین</th><th>نام کاربری</th><th></th></tr></thead><tbody>${list.map(c => `<tr class="click" data-c="${c.id}" style="${c.active ? "" : "opacity:.5"}"><td>${esc(c.name)}<div class="muted" style="font-size:12px">${esc(c.contact)} ${c.phone ? esc(faDigits(c.phone)) : ""}</div></td><td>${esc(c.city)}</td><td>${esc(faDigits(c.code)) || '<span class="pill warn">ندارد</span>'}</td><td>${esc(levels().find(l => l.k === c.level)?.name || c.level)}</td><td>${c.offer === "none" ? "بدون آفر" : /^[1-9]$/.test(c.offer) ? offerLabel(+c.offer) : "طبق کالا"}${c.margin ? ` · ${fa(c.margin)}٪` : ""}</td><td dir="ltr" style="text-align:end">${esc(c.username)}</td><td>${c.active ? "" : '<span class="pill">غیرفعال</span>'}</td></tr>`).join("")}</tbody></table>` : `<p class="empty">مشتری‌ای نیست.</p>`;
     $$("[data-c]").forEach(r => r.onclick = () => editCustomer(S.customers.find(c => c.id === +r.dataset.c), m));
   };
   $("#q").oninput = e => { q = e.target.value; draw(); };
@@ -226,10 +267,13 @@ function editCustomer(c, m) {
     <label class="field"><span>کد مشتری در حسابداری</span><input name="code" type="text" value="${esc(c.code)}" dir="ltr"></label></div>
     <p class="muted" style="font-size:12.5px;margin:-4px 0 12px">کد حسابداری برای وصل کردن فاکتورها و مانده‌حساب اکسل به همین مشتری است.</p>
     <label class="field"><span>سطح قیمت</span><select name="level">${levels().map(l => `<option value="${esc(l.k)}" ${l.k === c.level ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select></label>
+    <div class="grid2"><label class="field"><span>آفر این مشتری</span><select name="offer"><option value="product" ${(c.offer || "product") === "product" ? "selected" : ""}>طبق آفر هر کالا</option><option value="none" ${c.offer === "none" ? "selected" : ""}>بدون آفر</option>${OFFERS.slice(1).map(n => `<option value="${n}" ${String(n) === String(c.offer) ? "selected" : ""}>${offerLabel(n)} برای همه</option>`).join("")}</select></label>
+    <label class="field"><span>مارجین (٪)</span><input name="margin" type="text" inputmode="decimal" value="${c.margin ?? 0}"></label></div>
+    <p class="muted" style="font-size:12.5px;margin:-4px 0 12px">آفر و مارجین فقط پیشنهاد اولیهٔ پیش‌فاکتور است؛ مدیر فروش موقع تایید هر سفارش می‌تواند عوضشان کند.</p>
     <div class="grid2"><label class="field"><span>نام کاربری (انگلیسی)</span><input name="username" type="text" value="${esc(c.username)}" dir="ltr" autocapitalize="none" required></label>
     <label class="field"><span>${c.id ? "رمز جدید (خالی = بدون تغییر)" : "رمز (حداقل ۶ حرف)"}</span><input name="password" type="text" dir="ltr" autocomplete="off"></label></div>
     <label class="check"><input type="checkbox" name="active" ${c.active ? "checked" : ""}> فعال (می‌تواند وارد شود)</label>` + foot(), async f => {
-    await api("/api/admin/customers", { id: c.id, name: f.name.value, contact: f.contact.value, phone: latin(f.phone.value), city: f.city.value, code: latin(f.code.value), level: f.level.value, username: latin(f.username.value), password: latin(f.password.value), active: f.active.checked });
+    await api("/api/admin/customers", { id: c.id, name: f.name.value, contact: f.contact.value, phone: latin(f.phone.value), city: f.city.value, code: latin(f.code.value), level: f.level.value, offer: f.offer.value, margin: numIn(f.margin.value), username: latin(f.username.value), password: latin(f.password.value), active: f.active.checked });
     toast("ذخیره شد"); VIEWS.customers(m);
   });
 }
@@ -379,6 +423,7 @@ VIEWS.settings = async m => {
     <div class="grid2"><label class="field"><span>نام برند</span><input name="brand" type="text" value="${esc(s.brand)}"></label>
     <label class="field"><span>واحد پول</span><select name="currency"><option ${s.currency === "تومان" ? "selected" : ""}>تومان</option><option ${s.currency === "ریال" ? "selected" : ""}>ریال</option></select></label>
     <label class="field"><span>تلفن روی پیش‌فاکتور</span><input name="phone" type="tel" value="${esc(s.phone)}" dir="ltr"></label></div>
+    <label class="field"><span>مالیات پیش‌فاکتور (٪)</span><input name="taxPct" type="text" inputmode="decimal" value="${s.taxPct ?? 10}"></label>
     <label class="field"><span>متن پایین پیش‌فاکتور</span><textarea name="proformaNote" rows="2">${esc(s.proformaNote)}</textarea></label>
     <div class="field"><span>سطح‌های قیمت (هر مشتری یکی از این‌ها را دارد)</span><ul class="cats" id="lv">${s.levels.map(l => `<li><input type="text" value="${esc(l.name)}" data-k="${esc(l.k)}" aria-label="نام سطح"><span class="muted" dir="ltr" style="font-size:12px">${esc(l.k)}</span></li>`).join("")}</ul>
       <button class="btn sm" type="button" id="al">+ سطح جدید</button></div>
@@ -388,7 +433,7 @@ VIEWS.settings = async m => {
   $("#al").onclick = () => { const used = $$("#lv input").map(i => i.dataset.k); const k = "ABCDEFGHIJ".split("").find(c => !used.includes(c)); if (!k) return; $("#lv").insertAdjacentHTML("beforeend", `<li><input type="text" data-k="${k}" placeholder="نام سطح"><span class="muted" dir="ltr" style="font-size:12px">${k}</span></li>`); };
   $("#sf").onsubmit = async e => {
     e.preventDefault(); const f = e.target;
-    try { S.settings = await api("/api/admin/settings", { brand: f.brand.value, currency: f.currency.value, phone: latin(f.phone.value), proformaNote: f.proformaNote.value, levels: $$("#lv input").map(i => ({ k: i.dataset.k, name: i.value })).filter(l => l.name.trim()) }); toast("ذخیره شد"); VIEWS.settings(m); }
+    try { S.settings = await api("/api/admin/settings", { brand: f.brand.value, currency: f.currency.value, phone: latin(f.phone.value), proformaNote: f.proformaNote.value, taxPct: numIn(f.taxPct.value), levels: $$("#lv input").map(i => ({ k: i.dataset.k, name: i.value })).filter(l => l.name.trim()) }); toast("ذخیره شد"); VIEWS.settings(m); }
     catch (err) { toast(err.message, true); }
   };
   $("#pw").onsubmit = async e => { e.preventDefault(); try { await api("/api/password", { old: latin(e.target.old.value), new: latin(e.target.nw.value) }); toast("رمز عوض شد"); e.target.reset(); } catch (err) { toast(err.message, true); } };
@@ -402,6 +447,7 @@ async function boot() {
     if (me.user.role !== "admin") { token.set(""); return loginView("این حساب مشتری است؛ با حساب مدیر وارد شوید."); }
     S.me = me.user; S.settings = me.settings;
     shell(); refreshBadge(); route();
+    setInterval(() => { if (document.visibilityState === "visible") refreshBadge(); }, 30000);
   } catch (e) { loginView(e.message); }
 }
 window.addEventListener("hashchange", () => { if ($("#main")) route(); });

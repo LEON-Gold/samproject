@@ -1,6 +1,6 @@
 // Offline shell: app files cached; API calls always go to the network (prices must be current).
-const V = "sam-v4";
-const SHELL = ["/", "/index.html", "/common.css", "/app.css", "/motion.css", "/common.js", "/app.js", "/fonts/vazirmatn-4.woff2", "/fonts/vazirmatn-5.woff2", "/icon.svg"];
+const V = "sam-v5";
+const SHELL = ["/", "/index.html", "/common.css", "/app.css", "/motion.css", "/common.js", "/proforma.js", "/app.js", "/fonts/vazirmatn-4.woff2", "/fonts/vazirmatn-5.woff2", "/icon.svg"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {

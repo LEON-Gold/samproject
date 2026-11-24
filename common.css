@@ -99,6 +99,8 @@ table.t td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align
   .pd th, .pd td { border: 1px solid #999; padding: 4px 6px; text-align: center; }
   .pd .l { text-align: start; }
   .pd tfoot td { font-weight: 700; }
+  .pd tr.pd-offer td { color: #555; font-size: 11px; border-top: 0; }
+  .pd tr.pd-total td { font-size: 13px; background: #eef2fb; }
   .pd-note { color: #444; }
   @page { size: A4; margin: 10mm; }
 }
