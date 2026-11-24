@@ -274,7 +274,7 @@ const KINDS = {
   invoices: { t: "فاکتورها", sub: "اکسل یا پی‌دی‌اف فهرست فاکتورهای حسابداری؛ هر مشتری فاکتورهای خودش را در اپ می‌بیند.", accept: ".xlsx,.csv,.pdf" },
   balances: { t: "مانده حساب‌ها", sub: "اکسل یا پی‌دی‌اف مانده (یا بدهکار/بستانکار) هر مشتری.", accept: ".xlsx,.csv,.pdf" },
 };
-const FIELD_NAMES = { code: "کد کالا", name: "نام کالا", cust: "مشتری", no: "شماره فاکتور", date: "تاریخ", amount: "مبلغ", kind: "نوع (فروش/مرجوعی)", balance: "مانده", debit: "بدهکار", credit: "بستانکار" };
+const FIELD_NAMES = { code: "کد کالا", name: "نام کالا", cust: "مشتری", no: "شماره فاکتور", date: "تاریخ", amount: "مبلغ", kind: "نوع (فروش/مرجوعی)", item: "شرح کالا (برای چاپ)", qty: "تعداد", unit: "فی", balance: "مانده", debit: "بدهکار", credit: "بستانکار" };
 VIEWS.import = async m => {
   [S.cats] = await Promise.all([api("/api/admin/cats")]);
   const st = { kind: "prices", file: null, sheets: [], si: 0, headerRow: 0, map: {}, factor: 1, custBy: "code", pv: null };
@@ -309,7 +309,7 @@ VIEWS.import = async m => {
     const sh = st.sheets[st.si], rows = sh.rows, width = Math.max(...rows.slice(0, 50).map(r => r.length), 1);
     const colName = i => { const h = rows[st.headerRow]?.[i]; return `ستون ${fa(i + 1)}${h !== undefined && h !== "" ? " — " + String(h).slice(0, 24) : ""}`; };
     const sel = (name, val, opt = true) => `<select data-map="${name}">${opt ? `<option value="">—</option>` : ""}${Array.from({ length: width }, (_, i) => `<option value="${i}" ${val === i ? "selected" : ""}>${esc(colName(i))}</option>`).join("")}</select>`;
-    const fields = { prices: ["code", "name"], invoices: ["cust", "no", "date", "amount", "kind"], balances: ["cust", "balance", "debit", "credit"] }[st.kind];
+    const fields = { prices: ["code", "name"], invoices: ["cust", "no", "date", "amount", "kind", "item", "qty", "unit"], balances: ["cust", "balance", "debit", "credit"] }[st.kind];
     $("#cfg").innerHTML = `<section class="card panel"><h2>۱. ستون‌ها <span class="muted" style="font-weight:400;font-size:13px">(${esc(st.file)})</span></h2>
       <div class="maps">${st.sheets.length > 1 ? `<label class="field"><span>برگه</span><select id="si">${st.sheets.map((s, i) => `<option value="${i}" ${i === st.si ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>` : ""}
         <label class="field"><span>ردیف عنوان ستون‌ها</span><select id="hr">${rows.slice(0, 30).map((r, i) => `<option value="${i}" ${i === st.headerRow ? "selected" : ""}>ردیف ${fa(i + 1)}: ${esc(r.filter(c => c !== "").slice(0, 3).join(" | ").slice(0, 40))}</option>`).join("")}</select></label>

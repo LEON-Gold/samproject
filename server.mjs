@@ -36,9 +36,11 @@ export function openDb(file = path.join(DATA, "sam.db")) {
   CREATE TABLE IF NOT EXISTS festivals(id INTEGER PRIMARY KEY, title TEXT NOT NULL, poster TEXT DEFAULT '', descr TEXT DEFAULT '', min_amount INTEGER DEFAULT 0,
     start TEXT NOT NULL, end TEXT NOT NULL, settle TEXT DEFAULT '', active INTEGER DEFAULT 1);
   CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY, uid INTEGER, cust TEXT NOT NULL, no TEXT NOT NULL, kind TEXT NOT NULL, date TEXT DEFAULT '',
-    date_raw TEXT DEFAULT '', amount INTEGER NOT NULL, batch TEXT, UNIQUE(kind, no));
+    date_raw TEXT DEFAULT '', amount INTEGER NOT NULL, batch TEXT, items TEXT DEFAULT '[]', UNIQUE(kind, no));
   CREATE TABLE IF NOT EXISTS balances(uid INTEGER PRIMARY KEY, amount INTEGER NOT NULL, as_of TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS imports(id INTEGER PRIMARY KEY, kind TEXT, file TEXT, summary TEXT, at TEXT DEFAULT (datetime('now')), by INTEGER);`);
+  // older test databases: invoices gained item lines (2026-11-24)
+  if (!db.prepare("PRAGMA table_info(invoices)").all().some(c => c.name === "items")) db.exec("ALTER TABLE invoices ADD COLUMN items TEXT DEFAULT '[]'");
   return db;
 }
 
@@ -203,7 +205,7 @@ export function createApp(db) {
     },
     "GET /api/account": req => {
       const u = needUser(req);
-      return { invoices: db.prepare("SELECT no, kind, date, date_raw, amount FROM invoices WHERE uid=? ORDER BY date DESC, no DESC LIMIT 500").all(u.id), balance: db.prepare("SELECT amount, as_of FROM balances WHERE uid=?").get(u.id) || null, festivals: festivalsFor(u) };
+      return { invoices: db.prepare("SELECT no, kind, date, date_raw, amount, items FROM invoices WHERE uid=? ORDER BY date DESC, no DESC LIMIT 500").all(u.id).map(i => ({ ...i, items: JSON.parse(i.items || "[]") })), balance: db.prepare("SELECT amount, as_of FROM balances WHERE uid=?").get(u.id) || null, festivals: festivalsFor(u) };
     },
 
     // ----- admin -----
@@ -316,7 +318,7 @@ export function createApp(db) {
     "POST /api/admin/import/read": async (req, b) => {
       needAdmin(req);
       const sheets = await readSheets(b.name, b.data);
-      const fields = { prices: ["code", "name", "price"], invoices: ["cust", "no", "date", "amount", "kind"], balances: ["cust", "balance", "debit", "credit"] }[b.kind] || [];
+      const fields = { prices: ["code", "name", "price"], invoices: ["cust", "no", "date", "amount", "kind", "item", "qty", "unit"], balances: ["cust", "balance", "debit", "credit"] }[b.kind] || [];
       return { sheets: sheets.map(s => ({ name: s.name, rows: s.rows.slice(0, 5000), guess: guess(s.rows, fields) })) };
     },
     "POST /api/admin/import/preview": (req, b) => { needAdmin(req); return preview(b); },
@@ -330,7 +332,7 @@ export function createApp(db) {
             if (it.status === "new" && b.createNew) db.prepare("INSERT INTO products(code,name,prices,cat) VALUES(?,?,?,?)").run(it.code, it.name || it.code, JSON.stringify(it.prices), b.newCat ? +b.newCat : null);
           }
         } else if (b.kind === "invoices") {
-          for (const it of pv.items) db.prepare("INSERT INTO invoices(uid,cust,no,kind,date,date_raw,amount,batch) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(kind,no) DO UPDATE SET uid=excluded.uid, cust=excluded.cust, date=excluded.date, date_raw=excluded.date_raw, amount=excluded.amount, batch=excluded.batch").run(it.uid, it.cust, it.no, it.kind, it.date, it.dateRaw, it.amount, batch);
+          for (const it of pv.items) db.prepare("INSERT INTO invoices(uid,cust,no,kind,date,date_raw,amount,batch,items) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,no) DO UPDATE SET uid=excluded.uid, cust=excluded.cust, date=excluded.date, date_raw=excluded.date_raw, amount=excluded.amount, batch=excluded.batch, items=excluded.items").run(it.uid, it.cust, it.no, it.kind, it.date, it.dateRaw, it.amount, batch, JSON.stringify(it.items || []));
         } else if (b.kind === "balances") {
           const asOf = parseDate(b.asOf) || today();
           for (const it of pv.items.filter(i => i.uid)) db.prepare("INSERT INTO balances VALUES(?,?,?) ON CONFLICT(uid) DO UPDATE SET amount=excluded.amount, as_of=excluded.as_of").run(it.uid, it.balance, asOf);

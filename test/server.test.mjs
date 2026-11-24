@@ -164,11 +164,13 @@ test("invoice and balance PDFs are read and matched", async () => {
   const { guess, invoicePreview, balancePreview } = await import("../lib/importer.mjs");
   const custs = [{ id: 1, name: "فروشگاه نمونه", code: "1001" }, { id: 2, name: "عمده‌فروشی نمونه", code: "1002" }];
   const inv = (await readPdf(fs.readFileSync(new URL("./fixtures/invoices-fa.pdf", import.meta.url))))[0].rows;
-  const gi = guess(inv, ["cust", "no", "date", "amount", "kind"]);
-  assert.deepEqual(gi.map, { cust: 0, no: 2, date: 3, amount: 7, kind: 8 });
+  const gi = guess(inv, ["cust", "no", "date", "amount", "kind", "item", "qty", "unit"]);
+  assert.deepEqual(gi.map, { cust: 0, no: 2, date: 3, amount: 7, kind: 8, item: 4, qty: 5, unit: 6 });
   const pi = invoicePreview(inv, { headerRow: gi.headerRow, map: gi.map }, custs);
   assert.deepEqual(pi.summary, { invoices: 5, returns: 2, unmatched: 0, bad: 0 });
-  assert.equal(pi.items.find(i => i.no === "3101").amount, 24 * 185000 + 12 * 240000);
+  const i3101 = pi.items.find(i => i.no === "3101");
+  assert.equal(i3101.amount, 24 * 185000 + 12 * 240000);
+  assert.deepEqual(i3101.items[0], { name: "فوم اصلاح (نمونه)", qty: 24, price: 185000, sum: 4440000 }, "item lines are kept for printing");
   const bal = (await readPdf(fs.readFileSync(new URL("./fixtures/balances-fa.pdf", import.meta.url))))[0].rows;
   const gb = guess(bal, ["cust", "balance", "debit", "credit"]);
   assert.deepEqual(gb.map, { cust: 0, debit: 2, credit: 3 });

@@ -41,19 +41,22 @@ export const STATUS = { open: "پیش‌فاکتور", new: "ثبت شده", con
 
 // Printable proforma / order. On iPhone, «چاپ» → share → save as PDF.
 export function printDoc(o, s, cust) {
-  const title = o.kind === "proforma" ? "پیش‌فاکتور" : "سفارش";
-  const rows = o.items.map((i, k) => `<tr><td>${fa(k + 1)}</td><td>${esc(faDigits(i.code))}</td><td class="l">${esc(i.name)}</td><td>${fa(i.qty)}</td><td>${fa(i.price)}</td><td>${fa(i.sum)}</td></tr>`).join("");
+  // o: an order/proforma, or an imported invoice ({ title, no, date, items, total })
+  const title = o.title || (o.kind === "proforma" ? "پیش‌فاکتور" : "سفارش");
+  const no = o.no != null ? faDigits(o.no) : fa(o.id), when = o.date ? faDate(o.date) : o.date_raw ? faDigits(o.date_raw) : faDate(o.updated || o.created);
+  const hasCode = o.items.some(i => i.code);
+  const rows = o.items.map((i, k) => `<tr><td>${fa(k + 1)}</td>${hasCode ? `<td>${esc(faDigits(i.code || ""))}</td>` : ""}<td class="l">${esc(i.name)}</td><td>${i.qty != null ? fa(i.qty) : ""}</td><td>${i.price != null ? fa(i.price) : ""}</td><td>${fa(i.sum)}</td></tr>`).join("");
   let el = $("#print"); if (!el) { el = document.createElement("div"); el.id = "print"; document.body.append(el); }
   el.innerHTML = `<div class="pd">
     <header><div><b class="pd-brand">${esc(s.brand)}</b>${s.phone ? `<span>تلفن: ${esc(faDigits(s.phone))}</span>` : ""}</div>
-      <div class="pd-meta"><h1>${title}</h1><span>شماره: ${fa(o.id)}</span><span>تاریخ: ${faDate(o.updated || o.created)}</span></div></header>
+      <div class="pd-meta"><h1>${title}</h1><span>شماره: ${esc(no)}</span><span>تاریخ: ${when}</span></div></header>
     <div class="pd-to">خریدار: <b>${esc(cust.name)}</b>${cust.city ? " — " + esc(cust.city) : ""}${cust.phone ? " — " + esc(faDigits(cust.phone)) : ""}</div>
-    <table><thead><tr><th>ردیف</th><th>کد</th><th class="l">شرح کالا</th><th>تعداد</th><th>فی (${esc(s.currency)})</th><th>جمع (${esc(s.currency)})</th></tr></thead><tbody>${rows}</tbody>
-    <tfoot><tr><td colspan="5">جمع کل</td><td>${fa(o.total)}</td></tr></tfoot></table>
+    <table><thead><tr><th>ردیف</th>${hasCode ? "<th>کد</th>" : ""}<th class="l">شرح کالا</th><th>تعداد</th><th>فی (${esc(s.currency)})</th><th>جمع (${esc(s.currency)})</th></tr></thead><tbody>${rows}</tbody>
+    <tfoot><tr><td colspan="${hasCode ? 5 : 4}">جمع کل</td><td>${fa(o.total)}</td></tr></tfoot></table>
     ${o.note ? `<p>توضیح: ${esc(o.note)}</p>` : ""}
     ${o.kind === "proforma" && s.proformaNote ? `<p class="pd-note">${esc(s.proformaNote)}</p>` : ""}
   </div>`;
-  document.title = `${title} ${o.id} — ${s.brand}`;
+  document.title = `${title} ${o.no ?? o.id} — ${s.brand}`;
   setTimeout(() => window.print(), 50);
 }
 
