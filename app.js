@@ -209,9 +209,10 @@ async function viewAccount() {
   $("#acc").innerHTML = `<div class="card bal"><span class="muted">مانده حساب</span>
       ${b ? `<span class="v num">${money(Math.abs(b.amount), cur())}</span><span class="pill ${b.amount > 0 ? "warn" : "ok"}" style="justify-self:start">${b.amount > 0 ? "بدهکار" : b.amount < 0 ? "بستانکار" : "تسویه"}</span><span class="muted" style="font-size:12.5px">به‌روز شده: ${faDate(b.as_of, true)}</span>` : `<span class="muted">هنوز از حسابداری ثبت نشده.</span>`}</div>
     <div class="card" style="padding:4px 14px 8px;margin-bottom:14px"><h3 style="font-size:16px;margin:12px 0 2px">فاکتورهای من</h3>
-      ${invoices.length ? invoices.map(i => `<div class="inv"><div><b>${i.kind === "return" ? "برگشت از فروش" : "فاکتور"} ${esc(faDigits(i.no))}</b><div class="muted" style="font-size:12.5px">${i.date ? faDate(i.date, true) : esc(faDigits(i.date_raw))}</div></div><span class="a num" style="${i.kind === "return" ? "color:var(--ok)" : ""}">${money(i.amount, cur())}</span></div>`).join("") : `<p class="muted">فاکتوری ثبت نشده.</p>`}</div>
+      ${invoices.length ? invoices.map((i, k) => `<div class="inv" data-inv="${k}" role="button" tabindex="0" style="cursor:pointer"><div><b>${i.kind === "return" ? "برگشت از فروش" : "فاکتور"} ${esc(faDigits(i.no))}</b><div class="muted" style="font-size:12.5px">${i.date ? faDate(i.date, true) : esc(faDigits(i.date_raw))}</div></div><span class="a num" style="${i.kind === "return" ? "color:var(--ok)" : ""}">${money(i.amount, cur())}</span></div>`).join("") : `<p class="muted">فاکتوری ثبت نشده.</p>`}</div>
     <div class="card" style="padding:14px"><div class="muted" style="font-size:13px">${esc(S.user.name)}${S.user.city ? " · " + esc(S.user.city) : ""}<br>نام کاربری: <span dir="ltr">${esc(S.user.username)}</span></div>
       <div class="row" style="margin-top:12px"><button class="btn" type="button" id="pw">تغییر رمز</button><button class="btn ghost danger" type="button" id="out">خروج</button></div></div>`;
+  $$("[data-inv]").forEach(el => el.onclick = el.onkeydown = e => { if (e.type === "keydown" && e.key !== "Enter") return; openInvoice(invoices[+el.dataset.inv]); });
   $("#out").onclick = async () => { try { await api("/api/logout", {}); } catch {} token.set(""); location.hash = ""; location.reload(); };
   $("#pw").onclick = () => {
     const d = document.createElement("dialog");
@@ -225,6 +226,21 @@ async function viewAccount() {
       try { await api("/api/password", { old: latin(e.target.old.value), new: latin(e.target.nw.value) }); toast("رمز عوض شد"); d.close(); } catch (err) { toast(err.message, true); }
     };
   };
+}
+
+// an invoice from accounting: its lines, and print / PDF (owner, 2026-11-24)
+function openInvoice(i) {
+  const title = i.kind === "return" ? "برگشت از فروش" : "فاکتور فروش";
+  const doc = { title, no: i.no, date: i.date, date_raw: i.date_raw, items: i.items.length ? i.items : [{ name: title, sum: i.amount }], total: i.amount };
+  const d = document.createElement("dialog");
+  d.innerHTML = `<div class="dlg"><div class="dlg-head"><h3>${title} ${esc(faDigits(i.no))}</h3></div>
+    <div class="muted" style="font-size:13px">${i.date ? faDate(i.date, true) : esc(faDigits(i.date_raw))}</div>
+    <table class="items">${doc.items.map(x => `<tr><td>${esc(x.name)}${x.qty != null ? `<div class="muted" style="font-size:12px">${fa(x.qty)}${x.price != null ? " × " + fa(x.price) : ""}</div>` : ""}</td><td class="num">${fa(x.sum)}</td></tr>`).join("")}
+    <tr><td><b>جمع کل</b></td><td class="num"><b>${money(i.amount, cur())}</b></td></tr></table>
+    <div class="dlg-foot"><button class="btn primary" type="button" data-a="print">چاپ / PDF</button><button class="btn ghost" type="button" data-a="close">بستن</button></div></div>`;
+  document.body.append(d); d.showModal();
+  d.onclose = () => d.remove();
+  d.onclick = e => { const a = e.target.closest("[data-a]")?.dataset.a; if (e.target === d || a === "close") d.close(); if (a === "print") printDoc(doc, S.settings, S.user); };
 }
 
 // ---------- boot ----------
