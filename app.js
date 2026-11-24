@@ -1,5 +1,5 @@
 // SAM customer app: products by category, cart → order or proforma, orders, festivals, invoices and balance.
-import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc } from "/common.js";
+import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc } from "/common.js?v=2";
 
 const S = { user: null, settings: {}, cats: [], products: [], festivals: [], orders: null, account: null, tab: "products", cat: "all", q: "", cart: {}, ordersSeg: "order" };
 const app = $("#app");
