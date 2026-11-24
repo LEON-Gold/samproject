@@ -37,6 +37,44 @@ export function toast(msg, bad) {
   clearTimeout(t._h); t._h = setTimeout(() => t.className = "toast", 3200);
 }
 
+// Count-up (owner, 2026-11-24): when a tab opens, its numbers roll from ۰ up to their value.
+// Works on text nodes that are only a number (۱۹۹٬۰۰۰), so dates, codes and mixed text are left alone.
+// One rAF loop for all numbers on screen; writes nodeValue only (tabular digits keep the width steady).
+const counted = new WeakSet();
+// a number, optionally followed by its unit («۸٬۰۸۲٬۰۰۰ تومان», «۱۲ روز», «۴۰٪»)
+const NUM_ONLY = /^(\s*)([۰-۹][۰-۹٬,]*)(\s*(?:تومان|ریال|روز|٪|%)?\s*)$/;
+const SKIP = ".badge, .tabs, .step, .sheet, input, textarea, select, script, style, #print";
+function countNodes(root) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), list = [];
+  for (let n = tw.nextNode(); n && list.length < 80; n = tw.nextNode()) {
+    if (counted.has(n) || !NUM_ONLY.test(n.nodeValue) || n.parentElement?.closest(SKIP)) continue;
+    const [, pre, digits, post] = n.nodeValue.match(NUM_ONLY), target = +latin(digits).replace(/[٬,]/g, "");
+    if (!(target > 0)) continue;
+    counted.add(n);
+    list.push({ n, target, pre, post, grouped: /[٬,]/.test(digits) });
+  }
+  if (!list.length) return;
+  const fmt = (x, g) => g ? nf.format(x) : faDigits(x);
+  const dur = 900, t0 = performance.now(), ease = t => 1 - Math.pow(1 - t, 4); // fast start, soft landing
+  for (const x of list) x.n.nodeValue = x.pre + fmt(0, x.grouped) + x.post;
+  const step = now => {
+    const t = Math.min(1, (now - t0) / dur), k = ease(t);
+    for (const x of list) x.n.nodeValue = x.pre + fmt(t < 1 ? Math.round(x.target * k) : x.target, x.grouped) + x.post;
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+// Watch a container for a short while after a tab opens, so numbers that arrive with the data count too.
+let watch = null;
+export function countUpOnEnter(root, ms = 2500) {
+  if (watch) watch.disconnect();
+  countNodes(root);
+  watch = new MutationObserver(() => countNodes(root));
+  watch.observe(root, { childList: true, subtree: true });
+  setTimeout(() => { if (watch) { watch.disconnect(); watch = null; } }, ms);
+}
+
 export const STATUS = { open: "پیش‌فاکتور", new: "ثبت شده", confirmed: "تایید شده", sent: "ارسال شده", done: "تحویل شده", cancelled: "لغو شده" };
 
 // Printable proforma / order. On iPhone, «چاپ» → share → save as PDF.

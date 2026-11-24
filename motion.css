@@ -1,0 +1,56 @@
+/* SAM motion: CSS only (runs off the main thread), transform + opacity only, nothing above 360ms.
+   Everything here is off when the phone asks for reduced motion (see the end of common.css). */
+:root { --ease-out: cubic-bezier(.22, 1, .36, 1); --ease-in-out: cubic-bezier(.65, 0, .35, 1); }
+
+@keyframes sam-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes sam-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sam-pop { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes sam-bump { 0% { transform: scale(1); } 35% { transform: scale(1.35); } 100% { transform: scale(1); } }
+@keyframes sam-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes sam-tab { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+@keyframes sam-shimmer { from { transform: translateX(100%); } to { transform: translateX(-100%); } }
+
+/* a screen / panel page coming in (class set by JS on each tab change) */
+.enter { animation: sam-rise .28s var(--ease-out) both; }
+
+/* product cards: short stagger on first show / category change, capped so long lists don't wait */
+.stagger > * { animation: sam-rise .32s var(--ease-out) both; animation-delay: calc(min(var(--i, 0), 10) * 28ms); }
+
+/* dialogs and their backdrop */
+dialog[open] { animation: sam-pop .24s var(--ease-out) both; }
+dialog[open]::backdrop { animation: sam-fade .2s ease-out both; }
+
+/* cart badge bumps when something is added */
+.badge.bump { animation: sam-bump .34s var(--ease-out); }
+
+/* stepper appears in place of «افزودن به سبد» */
+.step { animation: sam-pop .2s var(--ease-out) both; }
+
+/* festival progress fills from the right (RTL start) */
+.bar i { transform-origin: right center; animation: sam-fill .9s var(--ease-out) .1s both; }
+
+/* active tab marker grows from its centre */
+.tabs button[aria-current="page"]::before { animation: sam-tab .25s var(--ease-out) both; }
+.tabs button svg { transition: transform .2s var(--ease-out); }
+.tabs button[aria-current="page"] svg { transform: translateY(-1px) scale(1.06); }
+.tabs button:active svg { transform: scale(.9); }
+
+/* press feedback on cards and rows */
+.o, .inv, tr.click, .fest-strip, .stat { transition: transform .14s var(--ease-out), background-color .15s; }
+.o:active, .inv:active, .fest-strip:active { transform: scale(.985); }
+
+/* loading placeholder: a soft light sweep instead of plain text */
+.loading { position: relative; overflow: hidden; color: transparent !important; min-height: 120px; border-radius: var(--radius); background: var(--surface-2); }
+.loading::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 70%, transparent), transparent); animation: sam-shimmer 1.2s ease-in-out infinite; }
+
+/* login card */
+.login .card { animation: sam-pop .4s var(--ease-out) .05s both; }
+
+/* product images fade in once decoded, instead of popping */
+.thumb img { animation: sam-fade .3s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .enter, .stagger > *, dialog[open], dialog[open]::backdrop, .badge.bump, .step, .bar i, .login .card, .thumb img,
+  .tabs button[aria-current="page"]::before, .loading::after { animation: none !important; }
+  .tabs button svg, .o, .inv, tr.click, .fest-strip, .stat { transition: none !important; transform: none !important; }
+}

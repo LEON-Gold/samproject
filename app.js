@@ -1,5 +1,5 @@
 // SAM customer app: products by category, cart → order or proforma, orders, festivals, invoices and balance.
-import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc } from "/common.js?v=2";
+import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, countUpOnEnter } from "/common.js?v=4";
 
 const S = { user: null, settings: {}, cats: [], products: [], festivals: [], orders: null, account: null, tab: "products", cat: "all", q: "", cart: {}, ordersSeg: "order" };
 const app = $("#app");
@@ -11,7 +11,7 @@ const pById = id => S.products.find(p => p.id === +id);
 const cartLines = () => Object.entries(S.cart).map(([id, q]) => ({ p: pById(id), q })).filter(l => l.p && l.q > 0);
 const cartCount = () => cartLines().length;
 const cartTotal = () => cartLines().reduce((a, l) => a + (l.p.price || 0) * l.q, 0);
-const thumb = p => p.img ? `<img src="${esc(p.img)}" alt="" loading="lazy">` : `<span class="mono">SAM</span>`;
+const thumb = p => p.img ? `<img src="${esc(p.img)}" alt="" loading="lazy" decoding="async">` : `<span class="mono">SAM</span>`;
 
 const ICON = {
   products: '<path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/>',
@@ -53,8 +53,13 @@ function go(tab) {
   $$(".tabs button").forEach(b => b.dataset.tab === tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   ({ products: viewProducts, festivals: viewFestivals, cart: viewCart, orders: viewOrders, account: viewAccount })[tab]();
   window.scrollTo(0, 0);
+  replay($("#main"), "enter");
+  countUpOnEnter($("#main"));
 }
-function badge() { const b = $("#cb"); if (!b) return; const n = cartCount(); b.hidden = !n; b.textContent = fa(n); }
+// restart a CSS animation class (one reflow, only on navigation / add)
+function replay(el, cls) { if (!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+let lastCount = 0;
+function badge() { const b = $("#cb"); if (!b) return; const n = cartCount(); b.hidden = !n; b.textContent = fa(n); if (n > lastCount) replay(b, "bump"); lastCount = n; }
 
 // ---------- products ----------
 function stepper(p) {
@@ -87,15 +92,15 @@ function viewProducts() {
     <div class="chips" role="group" aria-label="دسته‌ها">${[["all", "همه"], ...S.cats.filter(c => S.products.some(p => p.cat === c.id)).map(c => [c.id, c.name]), ...(S.products.some(p => !p.cat || !S.cats.some(c => c.id === p.cat)) ? [["none", "سایر"]] : [])]
       .map(([k, n]) => `<button class="chip" type="button" data-cat="${k}" aria-pressed="${String(S.cat) === String(k)}">${esc(n)}</button>`).join("")}</div>
     <div id="plist"></div>`;
-  $(".search", m).oninput = e => { S.q = e.target.value; list(); };
-  $$("[data-cat]", m).forEach(b => b.onclick = () => { S.cat = b.dataset.cat; $$("[data-cat]", m).forEach(x => x.setAttribute("aria-pressed", x === b)); list(); });
+  $(".search", m).oninput = e => { S.q = e.target.value; list(false); };
+  $$("[data-cat]", m).forEach(b => b.onclick = () => { S.cat = b.dataset.cat; $$("[data-cat]", m).forEach(x => x.setAttribute("aria-pressed", x === b)); list(true); });
   $$("[data-fest]", m).forEach(b => b.onclick = () => go("festivals"));
-  const list = () => {
+  const list = (animate = true) => {
     const q = latin(S.q).trim().toLowerCase();
     const ok = p => (S.cat === "all" || (S.cat === "none" ? !S.cats.some(c => c.id === p.cat) : p.cat === +S.cat)) && (!q || p.name.toLowerCase().includes(q) || latin(p.code).toLowerCase().includes(q));
     const items = S.products.filter(ok);
     const groups = S.cat === "all" && !q ? [...S.cats.map(c => [c.name, items.filter(p => p.cat === c.id)]), ["سایر", items.filter(p => !S.cats.some(c => c.id === p.cat))]].filter(g => g[1].length) : [[null, items]];
-    $("#plist").innerHTML = items.length ? groups.map(([t, ps]) => `${t ? `<h3 class="sec-title">${esc(t)}</h3>` : ""}<div class="grid">${ps.map(card).join("")}</div>`).join("") : `<p class="empty">محصولی پیدا نشد.</p>`;
+    $("#plist").innerHTML = items.length ? groups.map(([t, ps]) => `${t ? `<h3 class="sec-title">${esc(t)}</h3>` : ""}<div class="grid${animate ? " stagger" : ""}">${ps.map((p, i) => card(p).replace('class="card p"', `class="card p" style="--i:${i}"`)).join("")}</div>`).join("") : `<p class="empty">محصولی پیدا نشد.</p>`;
   };
   const card = p => `<article class="card p" data-card="${p.id}"><div class="thumb" data-zoom="${p.id}" role="button" aria-label="بزرگ‌نمایی ${esc(p.name)}">${thumb(p)}</div>
     <h3>${esc(p.name)}</h3><div class="meta">${p.code ? "کد " + esc(faDigits(p.code)) : ""}${p.pack > 1 ? ` · کارتن ${fa(p.pack)} ${esc(p.unit)}` : ""}</div>
@@ -141,7 +146,7 @@ function viewCart() {
 const statusPill = o => `<span class="pill ${o.status === "cancelled" ? "bad" : o.status === "done" || o.status === "sent" ? "ok" : o.status === "open" ? "acc" : "warn"}">${STATUS[o.status]}</span>`;
 async function viewOrders() {
   const m = $("#main");
-  m.innerHTML = `<div class="h"><h2>سفارش‌ها</h2></div><div class="seg" role="group"><button type="button" data-s="order">سفارش‌ها</button><button type="button" data-s="proforma">پیش‌فاکتورها</button></div><div id="ol"><p class="empty">در حال دریافت…</p></div>`;
+  m.innerHTML = `<div class="h"><h2>سفارش‌ها</h2></div><div class="seg" role="group"><button type="button" data-s="order">سفارش‌ها</button><button type="button" data-s="proforma">پیش‌فاکتورها</button></div><div id="ol"><div class="loading" role="status" aria-label="در حال دریافت">در حال دریافت…</div></div>`;
   $$("[data-s]", m).forEach(b => { b.setAttribute("aria-pressed", b.dataset.s === S.ordersSeg); b.onclick = () => { S.ordersSeg = b.dataset.s; viewOrders(); }; });
   try { S.orders = S.orders || await api("/api/orders"); } catch (e) { $("#ol").innerHTML = `<p class="empty">${esc(e.message)}</p>`; return; }
   const list = S.orders.filter(o => o.kind === S.ordersSeg);
@@ -203,7 +208,7 @@ function viewFestivals() {
 // ---------- account ----------
 async function viewAccount() {
   const m = $("#main");
-  m.innerHTML = `<div class="h"><h2>حساب من</h2></div><div id="acc"><p class="empty">در حال دریافت…</p></div>`;
+  m.innerHTML = `<div class="h"><h2>حساب من</h2></div><div id="acc"><div class="loading" role="status" aria-label="در حال دریافت">در حال دریافت…</div></div>`;
   try { S.account = await api("/api/account"); } catch (e) { $("#acc").innerHTML = `<p class="empty">${esc(e.message)}</p>`; return; }
   const { balance: b, invoices } = S.account;
   $("#acc").innerHTML = `<div class="card bal"><span class="muted">مانده حساب</span>
