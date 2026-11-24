@@ -397,7 +397,7 @@ async function boot() {
   if (!token.get()) return loginView();
   try {
     const me = await api("/api/me");
-    if (me.user.role !== "admin") { location.href = "/"; return; }
+    if (me.user.role !== "admin") { token.set(""); return loginView("این حساب مشتری است؛ با حساب مدیر وارد شوید."); }
     S.me = me.user; S.settings = me.settings;
     shell(); refreshBadge(); route();
   } catch (e) { loginView(e.message); }
