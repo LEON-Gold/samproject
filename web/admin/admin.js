@@ -1,6 +1,6 @@
 // SAM admin panel: orders, agency report, products, categories, customers, festivals, file imports, settings.
-import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, shrinkImage, fileB64, countUpOnEnter } from "/common.js?v=5";
-import { OFFERS, offerLabel, buildProforma } from "/proforma.js?v=5";
+import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, shrinkImage, fileB64, countUpOnEnter } from "../common.js?v=6";
+import { OFFERS, offerLabel, buildProforma } from "../proforma.js?v=6";
 
 const app = $("#app");
 const S = { settings: {}, cats: [], products: [], customers: [], orders: [], me: null };

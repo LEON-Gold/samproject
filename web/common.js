@@ -4,10 +4,29 @@ export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // admin and customer keep separate logins, so both can be open side by side in one browser
-const KEY = location.pathname.startsWith("/admin") ? "sam.admin.token" : "sam.token";
+const KEY = /\/admin\//.test(location.pathname + "/") ? "sam.admin.token" : "sam.token";
 export const token = { get: () => { try { return localStorage.getItem(KEY) || ""; } catch { return ""; } }, set: t => { try { t ? localStorage.setItem(KEY, t) : localStorage.removeItem(KEY); } catch {} } };
 
+// GitHub Pages has no server: there the app runs on a demo backend inside the browser (demo.js), with sample data.
+export const DEMO = location.hostname.endsWith("github.io") || /[?&]demo\b/.test(location.search);
+let demoMod = null;
+const demo = () => demoMod || (demoMod = import(new URL("./demo.js?v=6", import.meta.url).href));
+if (DEMO) (async () => {
+  const m = await demo();
+  if (document.readyState === "loading") await new Promise(r => addEventListener("DOMContentLoaded", r));
+  const bar = document.createElement("div");
+  bar.className = "demo-bar"; bar.setAttribute("role", "note");
+  bar.innerHTML = `<span>نسخهٔ نمایشی (اطلاعات نمونه، فقط در همین مرورگر) · مشتری: <bdi dir="ltr">demo / demo1234</bdi> · مدیر: <bdi dir="ltr">admin / admin1234</bdi></span><button type="button">شروع از اول</button>`;
+  bar.querySelector("button").onclick = () => { if (confirm("اطلاعات نمونه به حالت اول برگردد؟")) { m.resetDemo(); location.reload(); } };
+  document.body.prepend(bar);
+})();
+
 export async function api(path, body) {
+  if (DEMO) {
+    const m = await demo();
+    try { return await m.demoApi(body ? "POST" : "GET", path, body, token.get()); }
+    catch (e) { if (e.status === 401 && path !== "/api/login") { token.set(""); location.reload(); } throw new Error(e.message || "خطا"); }
+  }
   const r = await fetch(path, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...(token.get() ? { Authorization: "Bearer " + token.get() } : {}) }, body: body ? JSON.stringify(body) : undefined });
   let data = {}; try { data = await r.json(); } catch {}
   if (r.status === 401 && path !== "/api/login") { token.set(""); location.reload(); }

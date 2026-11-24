@@ -1,6 +1,6 @@
 // SAM customer app: products by category, cart → order or proforma, orders, festivals, invoices and balance.
-import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, countUpOnEnter } from "/common.js?v=5";
-import { offerLabel } from "/proforma.js?v=5";
+import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, countUpOnEnter } from "./common.js?v=6";
+import { offerLabel } from "./proforma.js?v=6";
 
 const S = { user: null, settings: {}, cats: [], products: [], festivals: [], orders: null, account: null, tab: "products", cat: "all", q: "", cart: {}, unseen: 0 };
 const app = $("#app");
@@ -292,4 +292,4 @@ async function boot() {
   } catch (e) { if (!token.get()) loginView(); else app.innerHTML = `<p class="empty">${esc(e.message)}<br><button class="btn" style="margin-top:12px" onclick="location.reload()">دوباره</button></p>`; }
 }
 boot();
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
