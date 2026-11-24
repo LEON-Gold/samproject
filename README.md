@@ -42,3 +42,12 @@ npm test
 - A proforma takes today's prices when it becomes an order.
 - Old `.xls` files must be saved as `.xlsx` first.
 - PDF import works only with text PDFs, not scanned images.
+
+## Demo on GitHub Pages
+
+The demo lives at https://leon-gold.github.io/samproject/ and the admin panel at `/admin/`.
+
+- **No server:** the app runs on `web/demo.js` with sample data, saved only in the visitor's browser.
+- **Logins:** customer `demo` / `demo1234`, admin `admin` / `admin1234`. These work in the demo only.
+- **Limit:** file import works only on the real server, not in the demo.
+- **Update it:** after committing, run `tools/publish-demo.sh`. It pushes `web/` to the `gh-pages` branch.
