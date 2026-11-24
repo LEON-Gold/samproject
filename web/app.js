@@ -232,7 +232,7 @@ async function boot() {
   if (!token.get()) return loginView();
   try {
     const me = await api("/api/me");
-    if (me.user.role === "admin") { location.href = "/admin/"; return; }
+    if (me.user.role === "admin") { token.set(""); return loginView("این حساب مدیر است؛ برای پنل به ‎/admin‎ بروید."); }
     S.user = me.user; S.settings = me.settings; loadCart();
     const c = await api("/api/catalog");
     Object.assign(S, { cats: c.cats, products: c.products, festivals: c.festivals, settings: c.settings });
