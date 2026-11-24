@@ -1,5 +1,5 @@
 // SAM admin panel: orders, agency report, products, categories, customers, festivals, file imports, settings.
-import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, shrinkImage, fileB64 } from "/common.js?v=2";
+import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, shrinkImage, fileB64, countUpOnEnter } from "/common.js?v=4";
 
 const app = $("#app");
 const S = { settings: {}, cats: [], products: [], customers: [], orders: [], me: null };
@@ -7,7 +7,7 @@ const cur = () => S.settings.currency || "تومان";
 const levels = () => S.settings.levels || [];
 const NAV = [["home", "خلاصه"], ["orders", "سفارش‌ها"], ["report", "گزارش نمایندگی‌ها"], ["products", "محصولات"], ["cats", "دسته‌بندی"], ["customers", "مشتری‌ها"], ["festivals", "جشنواره‌ها"], ["import", "ورود فایل"], ["settings", "تنظیمات"]];
 const page = (title, sub, actions = "") => `<div class="ph"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ""}</div><div class="row">${actions}</div></div>`;
-const thumb = src => src ? `<img src="${esc(src)}" alt="" loading="lazy">` : `<span class="mono" style="font-size:11px">SAM</span>`;
+const thumb = src => src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">` : `<span class="mono" style="font-size:11px">SAM</span>`;
 const numIn = v => { const n = +latin(String(v ?? "")).replace(/[٬,\s]/g, ""); return isFinite(n) ? n : 0; };
 const catName = id => S.cats.find(c => c.id === id)?.name || "بدون دسته";
 
@@ -58,9 +58,11 @@ function shell() {
 async function route() {
   const k = location.hash.slice(1) || "home";
   $$(".nav a").forEach(a => a.dataset.k === k ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
-  const m = $("#main"); m.innerHTML = `<p class="empty">در حال دریافت…</p>`;
+  const m = $("#main"); m.innerHTML = `<div class="loading" role="status" aria-label="در حال دریافت">در حال دریافت…</div>`;
   try { await (VIEWS[k] || VIEWS.home)(m); } catch (e) { m.innerHTML = `<p class="empty">${esc(e.message)}</p>`; }
   window.scrollTo(0, 0);
+  m.classList.remove("enter"); void m.offsetWidth; m.classList.add("enter");
+  countUpOnEnter(m);
 }
 async function refreshBadge() { try { const o = await api("/api/admin/overview"); const b = $("#nn"); if (b) { b.hidden = !o.newOrders; b.textContent = fa(o.newOrders); } return o; } catch { return null; } }
 

@@ -3,6 +3,7 @@
 // the SAM team manages products, customers, orders, festivals, and imports price lists, invoices and balances.
 import http from "node:http";
 import fs from "node:fs";
+import zlib from "node:zlib";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -369,8 +370,9 @@ export function createApp(db) {
           body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
         }
         const out = await fn(req, body, id);
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-        return res.end(JSON.stringify(out));
+        const json = JSON.stringify(out), gz = json.length > 1400 && /\bgzip\b/.test(req.headers["accept-encoding"] || "");
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", Vary: "Accept-Encoding", ...(gz ? { "Content-Encoding": "gzip" } : {}) });
+        return res.end(gz ? zlib.gzipSync(json) : json);
       }
       // static: web/, uploads
       let p = decodeURIComponent(url.pathname);
@@ -384,8 +386,11 @@ export function createApp(db) {
       }
       if (!fs.existsSync(file) || !fs.statSync(file).isFile()) fail(404, "پیدا نشد");
       const ext = path.extname(file).toLowerCase();
-      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Cache-Control": [".html", ".js", ".css", ".webmanifest"].includes(ext) ? "no-cache" : "public, max-age=86400", "X-Content-Type-Options": "nosniff", "X-Robots-Tag": "noindex" });
-      fs.createReadStream(file).pipe(res);
+      // text files go gzipped (fonts and images are already compressed)
+      const gz = [".html", ".js", ".css", ".json", ".webmanifest", ".svg"].includes(ext) && /\bgzip\b/.test(req.headers["accept-encoding"] || "");
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Cache-Control": [".html", ".js", ".css", ".webmanifest"].includes(ext) ? "no-cache" : "public, max-age=86400", "X-Content-Type-Options": "nosniff", "X-Robots-Tag": "noindex", Vary: "Accept-Encoding", ...(gz ? { "Content-Encoding": "gzip" } : {}) });
+      const stream = fs.createReadStream(file);
+      (gz ? stream.pipe(zlib.createGzip({ level: 6 })) : stream).pipe(res);
     } catch (e) {
       const status = e.status || (e instanceof SyntaxError ? 400 : 500);
       if (status === 500) console.error(e);
