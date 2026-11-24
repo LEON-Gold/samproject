@@ -1,0 +1,15 @@
+{
+  "name": "sam-app",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node --experimental-sqlite server.mjs",
+    "test": "node --experimental-sqlite --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38"
+  }
+}
