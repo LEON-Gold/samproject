@@ -3,7 +3,8 @@ export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-const KEY = "sam.token";
+// admin and customer keep separate logins, so both can be open side by side in one browser
+const KEY = location.pathname.startsWith("/admin") ? "sam.admin.token" : "sam.token";
 export const token = { get: () => { try { return localStorage.getItem(KEY) || ""; } catch { return ""; } }, set: t => { try { t ? localStorage.setItem(KEY, t) : localStorage.removeItem(KEY); } catch {} } };
 
 export async function api(path, body) {
