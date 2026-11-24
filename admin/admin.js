@@ -271,8 +271,8 @@ function editFestival(f, m) {
 // ---------- importer ----------
 const KINDS = {
   prices: { t: "لیست قیمت", sub: "اکسل یا پی‌دی‌اف لیست قیمت؛ قیمت محصولات به‌روز می‌شود.", accept: ".xlsx,.csv,.pdf" },
-  invoices: { t: "فاکتورها", sub: "اکسل فاکتورهای حسابداری؛ هر مشتری فاکتورهای خودش را در اپ می‌بیند.", accept: ".xlsx,.csv" },
-  balances: { t: "مانده حساب‌ها", sub: "اکسل مانده (یا بدهکار/بستانکار) هر مشتری.", accept: ".xlsx,.csv" },
+  invoices: { t: "فاکتورها", sub: "اکسل یا پی‌دی‌اف فهرست فاکتورهای حسابداری؛ هر مشتری فاکتورهای خودش را در اپ می‌بیند.", accept: ".xlsx,.csv,.pdf" },
+  balances: { t: "مانده حساب‌ها", sub: "اکسل یا پی‌دی‌اف مانده (یا بدهکار/بستانکار) هر مشتری.", accept: ".xlsx,.csv,.pdf" },
 };
 const FIELD_NAMES = { code: "کد کالا", name: "نام کالا", cust: "مشتری", no: "شماره فاکتور", date: "تاریخ", amount: "مبلغ", kind: "نوع (فروش/مرجوعی)", balance: "مانده", debit: "بدهکار", credit: "بستانکار" };
 VIEWS.import = async m => {
