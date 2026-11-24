@@ -158,3 +158,20 @@ test("Persian PDF price list (visual-order text) is read in reading order", asyn
   assert.equal(pv.items.find(i => i.code === "Z-900").name, "کرم دست");
   assert.equal(rows[2][2], "فوم اصلاح (نمونه)", "brackets come back the right way round");
 });
+
+test("invoice and balance PDFs are read and matched", async () => {
+  const { readPdf } = await import("../lib/pdf.mjs");
+  const { guess, invoicePreview, balancePreview } = await import("../lib/importer.mjs");
+  const custs = [{ id: 1, name: "فروشگاه نمونه", code: "1001" }, { id: 2, name: "عمده‌فروشی نمونه", code: "1002" }];
+  const inv = (await readPdf(fs.readFileSync(new URL("./fixtures/invoices-fa.pdf", import.meta.url))))[0].rows;
+  const gi = guess(inv, ["cust", "no", "date", "amount", "kind"]);
+  assert.deepEqual(gi.map, { cust: 0, no: 2, date: 3, amount: 7, kind: 8 });
+  const pi = invoicePreview(inv, { headerRow: gi.headerRow, map: gi.map }, custs);
+  assert.deepEqual(pi.summary, { invoices: 5, returns: 2, unmatched: 0, bad: 0 });
+  assert.equal(pi.items.find(i => i.no === "3101").amount, 24 * 185000 + 12 * 240000);
+  const bal = (await readPdf(fs.readFileSync(new URL("./fixtures/balances-fa.pdf", import.meta.url))))[0].rows;
+  const gb = guess(bal, ["cust", "balance", "debit", "credit"]);
+  assert.deepEqual(gb.map, { cust: 0, debit: 2, credit: 3 });
+  const pb = balancePreview(bal, { headerRow: gb.headerRow, map: gb.map }, custs);
+  assert.equal(pb.items.find(i => i.uid === 2).balance, -2500000);
+});
