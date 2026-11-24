@@ -77,20 +77,42 @@ test("login, catalog prices by level, no prices without login", async () => {
   assert.ok(!("prices" in pa), "a customer never sees other levels' prices");
 });
 
-test("proforma → order, prices come from the server", async () => {
+test("order waits for approval; admin issues the proforma with offers, tax and margin", async () => {
   const t = await login("demo", "demo1234");
   const { products } = await get("/api/catalog", t);
-  const pf = await call("/api/orders", { kind: "proforma", items: [{ id: products[0].id, qty: 2, price: 1 }] }, t);
-  assert.equal(pf.kind, "proforma"); assert.equal(pf.total, products[0].price * 2);
-  const o = await call(`/api/orders/${pf.id}/submit`, {}, t);
-  assert.equal(o.kind, "order"); assert.equal(o.status, "new");
+  const [p1, p2] = products;
+  const o = await call("/api/orders", { kind: "proforma", items: [{ id: p1.id, qty: 7, price: 1 }, { id: p2.id, qty: 3 }] }, t);
+  assert.equal(o.kind, "order", "customers can't make a proforma themselves");
+  assert.equal(o.status, "new"); assert.equal(o.proforma, null);
+  assert.equal(o.total, p1.price * 7 + p2.price * 3, "prices come from the server");
   const admin = await login("admin", "admin-pass");
-  assert.equal((await call(`/api/orders/${pf.id}/submit`, {}, admin)).status, 404, "another user can't touch it");
-  const r = await call(`/api/admin/orders/${o.id}`, { addReturn: { id: products[0].id, qty: 1, note: "شکسته" } }, admin);
-  assert.equal(r.returns[0].amount, products[0].price);
-  assert.equal((await call(`/api/admin/orders/${o.id}`, { addReturn: { id: products[0].id, qty: 5 } }, admin)).status, 400);
+  // product offer 2 به ۱ on p1; customer margin 18%
+  const pr = (await get("/api/admin/products", admin)).find(x => x.id === p1.id);
+  await call("/api/admin/products", { ...pr, offer: 2 }, admin);
+  const cu = (await get("/api/admin/customers", admin)).find(c => c.username === "demo");
+  await call("/api/admin/customers", { ...cu, margin: 18 }, admin);
+  const ao = (await get("/api/admin/orders", admin)).find(x => x.id === o.id);
+  assert.equal(ao.items.find(i => i.id === p1.id).sugOffer, 2, "suggested offer comes from the product");
+  assert.equal(ao.umargin, 18);
+  const pf = await call(`/api/admin/orders/${o.id}/proforma`, { offers: { [p1.id]: 2, [p2.id]: 1 }, taxPct: 10, marginPct: 18 }, admin);
+  assert.equal(pf.status, "confirmed");
+  const L1 = pf.proforma.lines.find(l => l.id === p1.id), L2 = pf.proforma.lines.find(l => l.id === p2.id);
+  assert.equal(L1.free, 3, "2 به ۱ on 7 pieces = 3 free"); assert.equal(L2.free, 3, "1 به ۱ on 3 pieces = 3 free");
+  const sub = p1.price * 7 + p2.price * 3, tax = Math.round(sub * 0.1), gross = sub + tax, margin = Math.round(gross * 0.18);
+  assert.deepEqual([pf.proforma.subtotal, pf.proforma.tax, pf.proforma.margin, pf.proforma.total], [sub, tax, margin, gross - margin]);
+  assert.equal(pf.total, gross - margin);
+  // the customer is told: one new proforma, until they open it
+  assert.equal((await get("/api/catalog", t)).unseen, 1);
+  assert.ok((await get("/api/orders", t)).find(x => x.id === o.id).proforma.lines.length === 2);
+  await call(`/api/orders/${o.id}/seen`, {}, t);
+  assert.equal((await get("/api/catalog", t)).unseen, 0);
+  assert.equal((await call(`/api/orders/${o.id}/cancel`, {}, t)).status, 400, "an approved order can't be cancelled by the customer");
+  // returns and the report still work on the approved total
+  const r = await call(`/api/admin/orders/${o.id}`, { addReturn: { id: p1.id, qty: 1, note: "شکسته" } }, admin);
+  assert.equal(r.returns[0].amount, p1.price);
+  assert.equal((await call(`/api/admin/orders/${o.id}`, { addReturn: { id: p1.id, qty: 50 } }, admin)).status, 400);
   const rep = (await get("/api/admin/report", admin)).find(x => x.name === "فروشگاه نمونه");
-  assert.equal(rep.sales, o.total); assert.equal(rep.returns, products[0].price); assert.equal(rep.source, "orders");
+  assert.equal(rep.sales, gross - margin); assert.equal(rep.source, "orders");
 });
 
 test("customers can't reach the admin api", async () => {

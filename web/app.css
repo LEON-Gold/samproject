@@ -88,3 +88,20 @@ main { padding: 14px 16px calc(96px + env(safe-area-inset-bottom)); max-width: 9
 .inv { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); gap: 8px; }
 .inv .a { font-weight: 700; white-space: nowrap; }
 .zoom img { width: 100%; border-radius: 12px; }
+
+/* order placed → waiting for approval (owner, 2026-11-24) */
+.done-mark { width: 64px; height: 64px; margin: 0 auto; }
+.done-mark svg { width: 100%; height: 100%; fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.done-mark circle { stroke-dasharray: 151; stroke-dashoffset: 151; animation: sam-draw .5s var(--ease-out, ease-out) forwards; }
+.done-mark path { stroke-dasharray: 36; stroke-dashoffset: 36; animation: sam-draw .35s var(--ease-out, ease-out) .4s forwards; }
+@keyframes sam-draw { to { stroke-dashoffset: 0; } }
+.queued { background: var(--warn-soft); color: var(--warn); padding: 10px 12px; border-radius: 10px; font-size: 14px; margin: 10px 0; }
+.o.fresh { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.o.fresh .r:first-child b::after { content: " · جدید"; color: var(--accent); font-size: 12.5px; }
+
+/* proforma: offer rows under their item, totals block */
+.items.pf tr.offer td { padding-top: 0; border-top: 0; color: var(--muted); }
+.items.pf tr.offer td:first-child { padding-inline-start: 10px; border-inline-start: 2px solid var(--accent); }
+.items.pf tr.t1 td { padding-top: 12px; }
+.items.pf tr.t2 td { border-bottom: 0; font-size: 16px; padding-top: 12px; }
+@media (prefers-reduced-motion: reduce) { .done-mark circle, .done-mark path { animation: none; stroke-dashoffset: 0; } }

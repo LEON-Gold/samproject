@@ -13,6 +13,7 @@ import { readPdf } from "./lib/pdf.mjs";
 import { pricePreview, invoicePreview, balancePreview, guess, norm } from "./lib/importer.mjs";
 import { parseDate } from "./lib/jalali.mjs";
 import { hash, checkPass } from "./lib/pass.mjs";
+import { buildProforma, suggestOffer } from "./web/proforma.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA = process.env.DATA_DIR || path.join(ROOT, "data");
@@ -41,18 +42,25 @@ export function openDb(file = path.join(DATA, "sam.db")) {
   CREATE TABLE IF NOT EXISTS balances(uid INTEGER PRIMARY KEY, amount INTEGER NOT NULL, as_of TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS imports(id INTEGER PRIMARY KEY, kind TEXT, file TEXT, summary TEXT, at TEXT DEFAULT (datetime('now')), by INTEGER);`);
   // older test databases: invoices gained item lines (2026-11-24)
-  if (!db.prepare("PRAGMA table_info(invoices)").all().some(c => c.name === "items")) db.exec("ALTER TABLE invoices ADD COLUMN items TEXT DEFAULT '[]'");
+  const addCol = (t, c, def) => { if (!db.prepare(`PRAGMA table_info(${t})`).all().some(x => x.name === c)) db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${def}`); };
+  addCol("invoices", "items", "TEXT DEFAULT '[]'");
+  // offers, margins and admin-issued proformas (owner, 2026-11-24)
+  addCol("products", "offer", "INTEGER DEFAULT 0");        // 0 = none, N = «N به ۱»
+  addCol("users", "margin", "REAL DEFAULT 0");             // % taken off the proforma for this customer
+  addCol("users", "offer", "TEXT DEFAULT 'product'");      // product | none | 1…9
+  addCol("orders", "proforma", "TEXT");                    // JSON from buildProforma, set when the admin approves
+  addCol("orders", "seen", "INTEGER DEFAULT 1");           // 0 = the customer hasn't opened the new proforma yet
   return db;
 }
 
 
-const DEFAULTS = { brand: "SAM", currency: "تومان", levels: [{ k: "A", name: "نمایندگی" }, { k: "B", name: "عمده‌فروش" }, { k: "C", name: "مغازه" }], phone: "", proformaNote: "اعتبار پیش‌فاکتور تا پایان همان روز است." };
+const DEFAULTS = { brand: "SAM", currency: "تومان", levels: [{ k: "A", name: "نمایندگی" }, { k: "B", name: "عمده‌فروش" }, { k: "C", name: "مغازه" }], phone: "", proformaNote: "اعتبار پیش‌فاکتور تا پایان همان روز است.", taxPct: 10, marginPct: 0 };
 const setting = (db, k) => { const r = db.prepare("SELECT v FROM settings WHERE k=?").get(k); return r ? JSON.parse(r.v) : DEFAULTS[k]; };
 const settings = db => Object.fromEntries(Object.keys(DEFAULTS).map(k => [k, setting(db, k)]));
 
 const prod = r => r && ({ ...r, prices: JSON.parse(r.prices || "{}"), active: !!r.active });
-const ord = r => r && ({ ...r, items: JSON.parse(r.items), returns: JSON.parse(r.returns || "[]") });
-const pubUser = u => u && ({ id: u.id, role: u.role, username: u.username, name: u.name, contact: u.contact, phone: u.phone, city: u.city, code: u.code, level: u.level, active: !!u.active, created: u.created });
+const ord = r => r && ({ ...r, items: JSON.parse(r.items), returns: JSON.parse(r.returns || "[]"), proforma: r.proforma ? JSON.parse(r.proforma) : null, seen: r.seen !== 0 });
+const pubUser = u => u && ({ id: u.id, role: u.role, username: u.username, name: u.name, contact: u.contact, phone: u.phone, city: u.city, code: u.code, level: u.level, active: !!u.active, created: u.created, margin: u.margin ?? 0, offer: u.offer || "product" });
 const today = () => new Date().toISOString().slice(0, 10);
 
 // What one customer bought inside a festival's dates: invoices when the accountants have imported them, otherwise app orders.
@@ -182,13 +190,14 @@ export function createApp(db) {
     },
 
     // ----- customer -----
-    "GET /api/catalog": req => { const u = needUser(req); return { ...catalogFor(u), festivals: festivalsFor(u), settings: settings(db) }; },
+    "GET /api/catalog": req => { const u = needUser(req); return { ...catalogFor(u), festivals: festivalsFor(u), settings: settings(db), unseen: db.prepare("SELECT COUNT(*) n FROM orders WHERE uid=? AND seen=0").get(u.id).n }; },
+    "POST /api/orders/:id/seen": (req, b, id) => { const u = needUser(req); db.prepare("UPDATE orders SET seen=1 WHERE id=? AND uid=?").run(id, u.id); return { ok: true }; },
     "GET /api/orders": req => { const u = needUser(req); return db.prepare("SELECT * FROM orders WHERE uid=? ORDER BY id DESC LIMIT 200").all(u.id).map(ord); },
     "POST /api/orders": (req, b) => {
       const u = needUser(req); if (u.role !== "customer") fail(403, "فقط مشتری سفارش می‌دهد");
       const items = priceItems(u, b.items), total = items.reduce((a, i) => a + i.sum, 0);
-      const kind = b.kind === "proforma" ? "proforma" : "order";
-      const r = db.prepare("INSERT INTO orders(uid,kind,status,items,total,note) VALUES(?,?,?,?,?,?)").run(u.id, kind, kind === "order" ? "new" : "open", JSON.stringify(items), total, String(b.note || "").slice(0, 500));
+      // every order waits for the sales team (owner, 2026-11-24): no proforma until an admin approves it
+      const r = db.prepare("INSERT INTO orders(uid,kind,status,items,total,note) VALUES(?,?,?,?,?,?)").run(u.id, "order", "new", JSON.stringify(items), total, String(b.note || "").slice(0, 500));
       return ord(db.prepare("SELECT * FROM orders WHERE id=?").get(r.lastInsertRowid));
     },
     "POST /api/orders/:id/submit": (req, b, id) => { // a proforma becomes an order, at today's prices
@@ -222,6 +231,7 @@ export function createApp(db) {
       for (const k of Object.keys(DEFAULTS)) if (k in b) {
         let v = b[k];
         if (k === "levels") v = (Array.isArray(v) ? v : []).map(l => ({ k: String(l.k).trim().slice(0, 8), name: String(l.name).trim().slice(0, 40) })).filter(l => l.k && l.name);
+        else if (k === "taxPct" || k === "marginPct") { v = Math.round(+v * 100) / 100; if (!(v >= 0 && v <= 100)) fail(400, "درصد باید بین ۰ و ۱۰۰ باشد"); }
         else v = String(v).slice(0, 300);
         if (k === "levels" && !v.length) fail(400, "حداقل یک سطح قیمت لازم است");
         db.prepare("INSERT INTO settings VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").run(k, JSON.stringify(v));
@@ -251,9 +261,9 @@ export function createApp(db) {
       const name = String(b.name || "").replace(/\s+/g, " ").trim().slice(0, 120); if (!name) fail(400, "نام محصول لازم است");
       const levels = setting(db, "levels").map(l => l.k), prices = {};
       for (const [k, v] of Object.entries(b.prices || {})) if (levels.includes(k) && v !== "" && v != null && +v >= 0) prices[k] = Math.round(+v);
-      const f = [String(b.code || "").trim().slice(0, 40), name, b.cat ? +b.cat : null, String(b.img || ""), Math.max(1, +b.pack || 1), String(b.unit || "عدد").slice(0, 20), String(b.descr || "").slice(0, 1000), JSON.stringify(prices), b.active === false ? 0 : 1];
-      if (b.id) db.prepare("UPDATE products SET code=?, name=?, cat=?, img=?, pack=?, unit=?, descr=?, prices=?, active=?, updated=datetime('now') WHERE id=?").run(...f, +b.id);
-      else b.id = db.prepare("INSERT INTO products(code,name,cat,img,pack,unit,descr,prices,active) VALUES(?,?,?,?,?,?,?,?,?)").run(...f).lastInsertRowid;
+      const f = [String(b.code || "").trim().slice(0, 40), name, b.cat ? +b.cat : null, String(b.img || ""), Math.max(1, +b.pack || 1), String(b.unit || "عدد").slice(0, 20), String(b.descr || "").slice(0, 1000), JSON.stringify(prices), b.active === false ? 0 : 1, Math.max(0, Math.min(9, Math.floor(+b.offer || 0)))];
+      if (b.id) db.prepare("UPDATE products SET code=?, name=?, cat=?, img=?, pack=?, unit=?, descr=?, prices=?, active=?, offer=?, updated=datetime('now') WHERE id=?").run(...f, +b.id);
+      else b.id = db.prepare("INSERT INTO products(code,name,cat,img,pack,unit,descr,prices,active,offer) VALUES(?,?,?,?,?,?,?,?,?,?)").run(...f).lastInsertRowid;
       return prod(db.prepare("SELECT * FROM products WHERE id=?").get(b.id));
     },
     "POST /api/admin/products/:id/delete": (req, b, id) => { needAdmin(req); db.prepare("UPDATE products SET active=0 WHERE id=?").run(id); return { ok: true }; },
@@ -266,21 +276,33 @@ export function createApp(db) {
       const name = String(b.name || "").trim().slice(0, 80); if (!name) fail(400, "نام فروشگاه لازم است");
       const dup = db.prepare("SELECT id FROM users WHERE username=?").get(username);
       if (dup && dup.id !== +b.id) fail(400, "این نام کاربری گرفته شده");
-      const f = [username, name, String(b.contact || "").slice(0, 80), String(b.phone || "").slice(0, 20), String(b.city || "").slice(0, 40), String(b.code || "").trim().slice(0, 40), String(b.level || "A"), b.active === false ? 0 : 1];
+      const f = [username, name, String(b.contact || "").slice(0, 80), String(b.phone || "").slice(0, 20), String(b.city || "").slice(0, 40), String(b.code || "").trim().slice(0, 40), String(b.level || "A"), b.active === false ? 0 : 1, Math.max(0, Math.min(100, Math.round((+b.margin || 0) * 100) / 100)), /^(product|none|[1-9])$/.test(String(b.offer)) ? String(b.offer) : "product"];
       if (b.id) {
-        db.prepare("UPDATE users SET username=?, name=?, contact=?, phone=?, city=?, code=?, level=?, active=? WHERE id=? AND role='customer'").run(...f, +b.id);
+        db.prepare("UPDATE users SET username=?, name=?, contact=?, phone=?, city=?, code=?, level=?, active=?, margin=?, offer=? WHERE id=? AND role='customer'").run(...f, +b.id);
         if (b.password) { if (String(b.password).length < 6) fail(400, "رمز حداقل ۶ حرف"); db.prepare("UPDATE users SET pass=? WHERE id=?").run(hash(b.password), +b.id); db.prepare("DELETE FROM sessions WHERE uid=?").run(+b.id); }
         if (b.active === false) db.prepare("DELETE FROM sessions WHERE uid=?").run(+b.id);
       } else {
         if (String(b.password || "").length < 6) fail(400, "رمز حداقل ۶ حرف");
-        b.id = db.prepare("INSERT INTO users(role,username,pass,name,contact,phone,city,code,level,active) VALUES('customer',?,?,?,?,?,?,?,?,?)").run(username, hash(b.password), ...f.slice(1)).lastInsertRowid;
+        b.id = db.prepare("INSERT INTO users(role,username,pass,name,contact,phone,city,code,level,active,margin,offer) VALUES('customer',?,?,?,?,?,?,?,?,?,?,?)").run(username, hash(b.password), ...f.slice(1)).lastInsertRowid;
       }
       return pubUser(db.prepare("SELECT * FROM users WHERE id=?").get(b.id));
     },
 
     "GET /api/admin/orders": (req) => {
       needAdmin(req);
-      return db.prepare("SELECT o.*, u.name uname, u.city ucity, u.phone uphone FROM orders o JOIN users u ON u.id=o.uid ORDER BY o.id DESC LIMIT 500").all().map(ord);
+      const offerOf = new Map(db.prepare("SELECT id, offer FROM products").all().map(p => [p.id, p.offer]));
+      return db.prepare("SELECT o.*, u.name uname, u.city ucity, u.phone uphone, u.margin umargin, u.offer uoffer FROM orders o JOIN users u ON u.id=o.uid ORDER BY o.id DESC LIMIT 500").all().map(ord)
+        .map(o => ({ ...o, items: o.items.map(i => ({ ...i, sugOffer: suggestOffer(offerOf.get(i.id), o.uoffer) })) }));
+    },
+    // approve an order: the sales manager's offers per item + tax + this customer's margin → proforma for the customer
+    "POST /api/admin/orders/:id/proforma": (req, b, id) => {
+      needAdmin(req);
+      const o = ord(db.prepare("SELECT * FROM orders WHERE id=?").get(id)); if (!o) fail(404, "سفارش پیدا نشد");
+      if (o.status === "cancelled") fail(400, "سفارش لغو شده است");
+      const pf = buildProforma(o.items, { offers: b.offers || {}, taxPct: b.taxPct ?? setting(db, "taxPct"), marginPct: b.marginPct ?? 0 });
+      pf.issued = new Date().toISOString();
+      db.prepare("UPDATE orders SET proforma=?, total=?, status=CASE WHEN status='new' THEN 'confirmed' ELSE status END, seen=0, updated=datetime('now') WHERE id=?").run(JSON.stringify(pf), pf.total, id);
+      return ord(db.prepare("SELECT * FROM orders WHERE id=?").get(id));
     },
     "POST /api/admin/orders/:id": (req, b, id) => {
       needAdmin(req);

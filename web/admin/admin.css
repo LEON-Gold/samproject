@@ -63,3 +63,14 @@ td .thumb { width: 44px; height: 44px; }
 .sum-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 td.chg { color: var(--accent); font-weight: 700; }
 td s { color: var(--muted); font-weight: 400; }
+
+/* approving an order into a proforma (owner, 2026-11-24) */
+tr.pending td:first-child { box-shadow: inset -3px 0 0 var(--accent); font-weight: 700; }
+.queued-admin { background: var(--accent-soft); color: var(--accent); padding: 10px 12px; border-radius: 10px; font-size: 14px; margin: 0 0 10px; }
+.pf-edit .offer-sel { min-width: 118px; min-height: 38px; padding: 6px 10px; }
+.pf-sum { display: grid; gap: 6px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); margin: 4px 0 10px; }
+.pf-sum > div { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+.pf-sum .tot { border-top: 1px solid var(--line); padding-top: 8px; font-size: 16px; }
+.pf-sum .tot b { color: var(--accent); }
+
+dialog { width: min(780px, calc(100% - 24px)); }
