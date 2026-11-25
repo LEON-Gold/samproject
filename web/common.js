@@ -5,7 +5,10 @@ export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;"
 
 // admin and customer keep separate logins, so both can be open side by side in one browser
 const KEY = /\/admin\//.test(location.pathname + "/") ? "sam.admin.token" : "sam.token";
-export const token = { get: () => { try { return localStorage.getItem(KEY) || ""; } catch { return ""; } }, set: t => { try { t ? localStorage.setItem(KEY, t) : localStorage.removeItem(KEY); } catch {} } };
+const keyStore = k => ({ get: () => { try { return localStorage.getItem(k) || ""; } catch { return ""; } }, set: t => { try { t ? localStorage.setItem(k, t) : localStorage.removeItem(k); } catch {} } });
+export const token = keyStore(KEY);
+// one login page for everyone (owner, 2026-11-25): the username decides which panel opens
+export const tokens = { admin: keyStore("sam.admin.token"), customer: keyStore("sam.token") };
 
 // GitHub Pages has no server: there the app runs on a demo backend inside the browser (demo.js), with sample data.
 export const DEMO = location.hostname.endsWith("github.io") || /[?&]demo\b/.test(location.search);

@@ -1,5 +1,5 @@
 // SAM admin panel: orders, agency report, products, categories, customers, festivals, file imports, settings.
-import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, shrinkImage, fileB64, countUpOnEnter } from "../common.js?v=6";
+import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, shrinkImage, fileB64, countUpOnEnter } from "../common.js?v=7";
 import { OFFERS, offerLabel, buildProforma } from "../proforma.js?v=6";
 
 const app = $("#app");
@@ -54,7 +54,7 @@ function shell() {
   app.innerHTML = `<div class="wrap"><aside class="side"><div class="brand">${esc(S.settings.brand || "SAM")}<small>پنل مدیریت</small></div>
     <nav class="nav">${NAV.map(([k, t]) => `<a href="#${k}" data-k="${k}">${t}${k === "orders" ? '<span class="pill acc" id="nn" hidden></span>' : ""}</a>`).join("")}</nav>
     <button class="btn sm ghost out" type="button" id="out">خروج</button></aside><main class="content" id="main"></main></div>`;
-  $("#out").onclick = async () => { try { await api("/api/logout", {}); } catch {} token.set(""); location.hash = ""; location.reload(); };
+  $("#out").onclick = async () => { try { await api("/api/logout", {}); } catch {} token.set(""); location.href = "../" + location.search; };
 }
 async function route() {
   const k = location.hash.slice(1) || "home";
@@ -441,10 +441,11 @@ VIEWS.settings = async m => {
 
 // ---------- boot ----------
 async function boot() {
-  if (!token.get()) return loginView();
+  // the only login page is the shared one at the root; it sends managers here
+  if (!token.get()) return location.replace("../" + location.search);
   try {
     const me = await api("/api/me");
-    if (me.user.role !== "admin") { token.set(""); return loginView("این حساب مشتری است؛ با حساب مدیر وارد شوید."); }
+    if (me.user.role !== "admin") { token.set(""); return location.replace("../" + location.search); }
     S.me = me.user; S.settings = me.settings;
     shell(); refreshBadge(); route();
     setInterval(() => { if (document.visibilityState === "visible") refreshBadge(); }, 30000);
