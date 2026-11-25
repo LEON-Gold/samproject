@@ -1,5 +1,5 @@
 // SAM customer app: products by category, cart → order or proforma, orders, festivals, invoices and balance.
-import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, countUpOnEnter } from "./common.js?v=6";
+import { $, $$, esc, api, token, tokens, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, countUpOnEnter } from "./common.js?v=7";
 import { offerLabel } from "./proforma.js?v=6";
 
 const S = { user: null, settings: {}, cats: [], products: [], festivals: [], orders: null, account: null, tab: "products", cat: "all", q: "", cart: {}, unseen: 0 };
@@ -36,7 +36,9 @@ function loginView(msg = "") {
   $("#lf").onsubmit = async e => {
     e.preventDefault(); const f = e.target, b = $("button", f);
     b.disabled = true;
-    try { const r = await api("/api/login", { u: latin(f.u.value), p: latin(f.p.value) }); token.set(r.token); boot(); }
+    // one door: a manager's username opens the panel, a customer's opens the shop
+    try { const r = await api("/api/login", { u: latin(f.u.value), p: latin(f.p.value) });
+      if (r.user.role === "admin") { tokens.admin.set(r.token); location.href = "admin/" + location.search; } else { token.set(r.token); boot(); } }
     catch (err) { $(".err", f).textContent = err.message; b.disabled = false; }
   };
 }
@@ -273,10 +275,10 @@ function openInvoice(i) {
 
 // ---------- boot ----------
 async function boot() {
-  if (!token.get()) return loginView();
+  if (!token.get()) { if (tokens.admin.get()) return location.replace("admin/" + location.search); return loginView(); }
   try {
     const me = await api("/api/me");
-    if (me.user.role === "admin") { token.set(""); return loginView("این حساب مدیر است؛ برای پنل به ‎/admin‎ بروید."); }
+    if (me.user.role === "admin") { tokens.admin.set(token.get()); token.set(""); return location.replace("admin/" + location.search); }
     S.user = me.user; S.settings = me.settings; loadCart();
     const c = await api("/api/catalog");
     Object.assign(S, { cats: c.cats, products: c.products, festivals: c.festivals, settings: c.settings });
