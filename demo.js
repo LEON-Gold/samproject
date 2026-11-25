@@ -89,6 +89,14 @@ const R = {
   },
   "POST /api/logout": t => { delete db.sessions[t]; return { ok: true }; },
   "GET /api/me": t => ({ user: pub(needUser(t)), settings: db.settings }),
+  "POST /api/profile": (t, b) => {
+    const u = needUser(t); if (u.pass !== String(b.old)) fail(400, "رمز فعلی اشتباه است");
+    const username = String(b.username ?? u.username).trim().toLowerCase();
+    if (!/^[a-z0-9_.]{3,30}$/.test(username)) fail(400, "نام کاربری: ۳ تا ۳۰ حرف انگلیسی، عدد، نقطه یا _");
+    if (db.users.some(x => x.username === username && x.id !== u.id)) fail(400, "این نام کاربری گرفته شده");
+    if (b.new && String(b.new).length < 6) fail(400, "رمز جدید حداقل ۶ حرف باشد");
+    u.username = username; if (b.new) u.pass = String(b.new); return { user: pub(u) };
+  },
   "POST /api/password": (t, b) => { const u = needUser(t); if (u.pass !== String(b.old)) fail(400, "رمز فعلی اشتباه است"); if (String(b.new || "").length < 6) fail(400, "رمز جدید حداقل ۶ حرف باشد"); u.pass = String(b.new); return { ok: true }; },
   "GET /api/catalog": t => {
     const u = needUser(t);

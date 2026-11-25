@@ -105,3 +105,30 @@ main { padding: 14px 16px calc(96px + env(safe-area-inset-bottom)); max-width: 9
 .items.pf tr.t1 td { padding-top: 12px; }
 .items.pf tr.t2 td { border-bottom: 0; font-size: 16px; padding-top: 12px; }
 @media (prefers-reduced-motion: reduce) { .done-mark circle, .done-mark path { animation: none; stroke-dashoffset: 0; } }
+
+/* ---- top bar + slide-in menu (replaces the bottom bar, owner 2026-11-25) ---- */
+.tabs { display: none !important; }
+.top { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 6px; padding: calc(6px + env(safe-area-inset-top)) 8px 6px; }
+.top .brand { font-size: 18px; }
+.top .ttl { font-size: 14px; font-weight: 700; color: var(--bar-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-inline-start: 6px; border-inline-start: 1px solid rgba(255, 255, 255, .15); }
+.cart-btn { position: relative; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 12px; background: rgba(255, 255, 255, .08); color: var(--bar-ink); cursor: pointer; }
+.cart-btn svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cart-btn .badge { top: 2px; inset-inline-start: auto; inset-inline-end: 0; }
+main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+.sum { bottom: calc(10px + env(safe-area-inset-bottom)); }
+.drawer { position: fixed; z-index: 80; top: 0; bottom: 0; right: 0; width: min(300px, 84vw); display: flex; flex-direction: column; background: var(--surface); box-shadow: -20px 0 50px rgba(0, 0, 0, .25);
+  padding: calc(14px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom)); transform: translateX(105%); transition: transform .32s var(--ease-out, cubic-bezier(.22,1,.36,1)); visibility: hidden; }
+.drawer.open { transform: none; visibility: visible; }
+.drawer .dh { display: flex; gap: 10px; align-items: center; padding: 6px 6px 14px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+.drawer .dh b { display: block; } .drawer .dh small { color: var(--muted); }
+.drawer nav { display: grid; gap: 2px; }
+.drawer nav button, .drawer .out { position: relative; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border: 0; border-radius: 12px; background: none; font: inherit; font-weight: 600; color: var(--ink); text-align: start; cursor: pointer; }
+.drawer nav button[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+.drawer svg { width: 22px; height: 22px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.drawer nav .badge { position: static; margin-inline-start: auto; }
+.drawer .out { margin-top: auto; color: var(--bad); }
+.drawer nav button { opacity: 0; transform: translateX(14px); transition: opacity .25s, transform .3s var(--ease-out, ease); }
+.drawer.open nav button { opacity: 1; transform: none; }
+.drawer.open nav button:nth-child(2) { transition-delay: .03s; } .drawer.open nav button:nth-child(3) { transition-delay: .06s; } .drawer.open nav button:nth-child(4) { transition-delay: .09s; }
+.drawer.open nav button:nth-child(5) { transition-delay: .12s; } .drawer.open nav button:nth-child(6) { transition-delay: .15s; }
+@media (prefers-reduced-motion: reduce) { .drawer, .drawer nav button { transition: none; } }

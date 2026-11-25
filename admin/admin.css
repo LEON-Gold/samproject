@@ -74,3 +74,27 @@ tr.pending td:first-child { box-shadow: inset -3px 0 0 var(--accent); font-weigh
 .pf-sum .tot b { color: var(--accent); }
 
 dialog { width: min(780px, calc(100% - 24px)); }
+
+/* ---- phones: top bar with a hamburger, the side menu slides in (owner, 2026-11-25) ---- */
+.mtop { display: none; }
+@media (max-width: 820px) {
+  .mtop { position: sticky; top: 0; z-index: 60; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; padding: calc(6px + env(safe-area-inset-top)) 8px 6px;
+    background: var(--bar); color: var(--bar-ink); border-bottom: 2px solid var(--accent); }
+  .mtop .ttl { font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mtop .mbrand { font-weight: 800; letter-spacing: .2em; padding-inline-end: 6px; direction: ltr; }
+  .wrap { display: block; }
+  .side { position: fixed; z-index: 80; top: 0; bottom: 0; right: 0; height: auto; width: min(290px, 84vw); flex-direction: column; align-items: stretch; overflow-y: auto;
+    padding: calc(16px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom)); border: 0; transform: translateX(105%); visibility: hidden;
+    transition: transform .32s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .32s; box-shadow: -20px 0 50px rgba(0, 0, 0, .35); }
+  .side.open { transform: none; visibility: visible; transition: transform .32s cubic-bezier(.22, 1, .36, 1); }
+  .side .brand { padding: 4px 12px 16px; font-size: 20px; } .side .brand small { display: block; }
+  .nav { display: grid; gap: 2px; }
+  .nav a { padding: 12px; white-space: normal; }
+  .side .out { margin-top: auto; }
+  .content { padding: 14px 14px 40px; }
+}
+
+/* menu icons */
+.nav a { justify-content: flex-start; gap: 10px; }
+.nav a .nt { flex: 1; }
+.nic { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
