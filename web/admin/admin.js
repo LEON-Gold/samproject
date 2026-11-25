@@ -1,12 +1,23 @@
 // SAM admin panel: orders, agency report, products, categories, customers, festivals, file imports, settings.
-import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, shrinkImage, fileB64, countUpOnEnter } from "../common.js?v=8";
+import { $, $$, esc, api, token, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, shrinkImage, fileB64, countUpOnEnter } from "../common.js?v=10";
+import { renderProfile, drawer } from "../common.js?v=10";
 import { OFFERS, offerLabel, buildProforma } from "../proforma.js?v=6";
 
 const app = $("#app");
 const S = { settings: {}, cats: [], products: [], customers: [], orders: [], me: null };
 const cur = () => S.settings.currency || "تومان";
 const levels = () => S.settings.levels || [];
-const NAV = [["home", "خلاصه"], ["orders", "سفارش‌ها"], ["report", "گزارش نمایندگی‌ها"], ["products", "محصولات"], ["cats", "دسته‌بندی"], ["customers", "مشتری‌ها"], ["festivals", "جشنواره‌ها"], ["import", "ورود فایل"], ["settings", "تنظیمات"]];
+// menu icons (same stroke style as the shop)
+const NAVIC = {
+  home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>', orders: '<path d="M8 3h8l3 3v15H5V3z"/><path d="M9 9h6M9 13h6M9 17h4"/>',
+  report: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', products: '<path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/>',
+  cats: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  customers: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.8-3.5 3.2-5.5 6-5.5s5.2 2 6 5.5"/><circle cx="17.5" cy="9.5" r="2.4"/><path d="M16 14.6c2.6.2 4.3 2 4.9 4.9"/>',
+  festivals: '<path d="M20 12v8H4v-8M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/>',
+  import: '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>', settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/>',
+  profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+};
+const NAV = [["home", "خلاصه"], ["orders", "سفارش‌ها"], ["report", "گزارش نمایندگی‌ها"], ["products", "محصولات"], ["cats", "دسته‌بندی"], ["customers", "مشتری‌ها"], ["festivals", "جشنواره‌ها"], ["import", "ورود فایل"], ["settings", "تنظیمات"], ["profile", "پروفایل"]];
 const page = (title, sub, actions = "") => `<div class="ph"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ""}</div><div class="row">${actions}</div></div>`;
 const thumb = src => src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">` : `<span class="mono" style="font-size:11px">SAM</span>`;
 const numIn = v => { const n = +latin(String(v ?? "")).replace(/[٬,\s]/g, ""); return isFinite(n) ? n : 0; };
@@ -50,15 +61,22 @@ function loginView(msg = "") {
     catch (err) { loginView(err.message); }
   };
 }
+// phones: a top bar with a hamburger; the side menu slides in (owner, 2026-11-25). Desktop keeps the side menu.
+let menu = null;
 function shell() {
-  app.innerHTML = `<div class="wrap"><aside class="side"><div class="brand">${esc(S.settings.brand || "SAM")}<small>پنل مدیریت</small></div>
-    <nav class="nav">${NAV.map(([k, t]) => `<a href="#${k}" data-k="${k}">${t}${k === "orders" ? '<span class="pill acc" id="nn" hidden></span>' : ""}</a>`).join("")}</nav>
+  app.innerHTML = `<header class="mtop"><button class="hamb" id="hamb" type="button" aria-label="منو" aria-expanded="false" aria-controls="side"><i></i><i></i><i></i><span class="dot" id="hdot" hidden></span></button>
+      <span class="ttl" id="ttl"></span><span class="mbrand">${esc(S.settings.brand || "SAM")}</span></header>
+    <div class="scrim" id="scrim" hidden></div>
+    <div class="wrap"><aside class="side" id="side" aria-label="منو"><div class="brand">${esc(S.settings.brand || "SAM")}<small>پنل مدیریت · ${esc(S.me?.name || "")}</small></div>
+    <nav class="nav">${NAV.map(([k, t]) => `<a href="#${k}" data-k="${k}"><svg class="nic" viewBox="0 0 24 24" aria-hidden="true">${NAVIC[k] || ""}</svg><span class="nt">${t}</span>${k === "orders" ? '<span class="pill acc" id="nn" hidden></span>' : ""}</a>`).join("")}</nav>
     <button class="btn sm ghost out" type="button" id="out">خروج</button></aside><main class="content" id="main"></main></div>`;
+  menu = drawer({ btn: $("#hamb"), panel: $("#side"), scrim: $("#scrim") });
   $("#out").onclick = async () => { try { await api("/api/logout", {}); } catch {} token.set(""); location.href = "../" + location.search; };
 }
 async function route() {
   const k = location.hash.slice(1) || "home";
   $$(".nav a").forEach(a => a.dataset.k === k ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
+  $("#ttl").textContent = (NAV.find(n => n[0] === k) || NAV[0])[1]; menu?.close();
   const m = $("#main"); m.innerHTML = `<div class="loading" role="status" aria-label="در حال دریافت">در حال دریافت…</div>`;
   try { await (VIEWS[k] || VIEWS.home)(m); } catch (e) { m.innerHTML = `<p class="empty">${esc(e.message)}</p>`; }
   window.scrollTo(0, 0);
@@ -69,7 +87,7 @@ let lastNew = null;
 async function refreshBadge() {
   try {
     const o = await api("/api/admin/overview"), b = $("#nn");
-    if (b) { b.hidden = !o.newOrders; b.textContent = fa(o.newOrders); }
+    if (b) { b.hidden = !o.newOrders; b.textContent = fa(o.newOrders); } const hd = $("#hdot"); if (hd) hd.hidden = !o.newOrders;
     document.title = (o.newOrders ? `(${fa(o.newOrders)}) ` : "") + "SAM پنل مدیریت";
     if (lastNew != null && o.newOrders > lastNew) { toast(`سفارش جدید رسید (${fa(o.newOrders)} در صف تایید)`); chime(); if (location.hash.slice(1) === "orders") route(); }
     lastNew = o.newOrders;
@@ -428,16 +446,16 @@ VIEWS.settings = async m => {
     <div class="field"><span>سطح‌های قیمت (هر مشتری یکی از این‌ها را دارد)</span><ul class="cats" id="lv">${s.levels.map(l => `<li><input type="text" value="${esc(l.name)}" data-k="${esc(l.k)}" aria-label="نام سطح"><span class="muted" dir="ltr" style="font-size:12px">${esc(l.k)}</span></li>`).join("")}</ul>
       <button class="btn sm" type="button" id="al">+ سطح جدید</button></div>
     <button class="btn primary" type="submit">ذخیره</button></form>
-    <form class="card panel" id="pw" style="max-width:620px" novalidate><h2>تغییر رمز مدیر</h2><div class="grid2"><label class="field"><span>رمز فعلی</span><input name="old" type="password" dir="ltr" autocomplete="current-password"></label>
-    <label class="field"><span>رمز جدید</span><input name="nw" type="password" dir="ltr" autocomplete="new-password"></label></div><button class="btn" type="submit">تغییر رمز</button></form>`;
+    <p class="muted" style="max-width:620px">نام کاربری و رمز مدیر در «پروفایل» عوض می‌شود.</p>`;
   $("#al").onclick = () => { const used = $$("#lv input").map(i => i.dataset.k); const k = "ABCDEFGHIJ".split("").find(c => !used.includes(c)); if (!k) return; $("#lv").insertAdjacentHTML("beforeend", `<li><input type="text" data-k="${k}" placeholder="نام سطح"><span class="muted" dir="ltr" style="font-size:12px">${k}</span></li>`); };
   $("#sf").onsubmit = async e => {
     e.preventDefault(); const f = e.target;
     try { S.settings = await api("/api/admin/settings", { brand: f.brand.value, currency: f.currency.value, phone: latin(f.phone.value), proformaNote: f.proformaNote.value, taxPct: numIn(f.taxPct.value), levels: $$("#lv input").map(i => ({ k: i.dataset.k, name: i.value })).filter(l => l.name.trim()) }); toast("ذخیره شد"); VIEWS.settings(m); }
     catch (err) { toast(err.message, true); }
   };
-  $("#pw").onsubmit = async e => { e.preventDefault(); try { await api("/api/password", { old: latin(e.target.old.value), new: latin(e.target.nw.value) }); toast("رمز عوض شد"); e.target.reset(); } catch (err) { toast(err.message, true); } };
 };
+
+VIEWS.profile = async m => renderProfile(m, S.me, u => { S.me = { ...S.me, ...u }; });
 
 // ---------- boot ----------
 async function boot() {

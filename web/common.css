@@ -111,3 +111,23 @@ table.t td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align
   background: var(--accent); color: var(--accent-ink); font-size: 12.5px; font-weight: 600; line-height: 1.5; }
 .demo-bar button { flex: none; min-height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent-ink) 45%, transparent); background: transparent; color: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
 .demo-bar + #app .top, .demo-bar + .wrap .side { top: 0; }
+
+/* ---- hamburger + slide-in menu + profile (both panels, owner 2026-11-25) ---- */
+html.lock { overflow: hidden; }
+.hamb { position: relative; width: 44px; height: 44px; display: grid; place-content: center; gap: 5px; border: 0; border-radius: 12px; background: transparent; color: inherit; cursor: pointer; flex: none; }
+.hamb i { display: block; width: 20px; height: 2px; border-radius: 2px; background: currentColor; transition: transform .25s var(--ease-out, ease), opacity .2s; }
+.hamb[aria-expanded="true"] i:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.hamb[aria-expanded="true"] i:nth-child(2) { opacity: 0; }
+.hamb[aria-expanded="true"] i:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+.hamb .dot { position: absolute; top: 9px; inset-inline-end: 8px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bar, var(--surface)); }
+.scrim { position: fixed; inset: 0; z-index: 70; background: rgba(5, 8, 14, .45); opacity: 0; transition: opacity .25s; }
+.scrim.on { opacity: 1; }
+.avatar { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 800; font-size: 18px; color: #fff; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000)); }
+.prof { max-width: 520px; display: grid; gap: 12px; }
+.prof-head { display: flex; gap: 12px; align-items: center; padding: 14px 16px; }
+.prof-head b { display: block; font-size: 16px; } .prof-head span { font-size: 13px; }
+.prof-form { padding: 16px; }
+.prof-form h3 { font-size: 15px; margin-bottom: 12px; }
+.prof-form .err { color: var(--bad); min-height: 20px; font-size: 13.5px; margin: 0 0 8px; }
+.prof-form .btn { width: 100%; }
+@media (prefers-reduced-motion: reduce) { .hamb i, .scrim { transition: none; } }

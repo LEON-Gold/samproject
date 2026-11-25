@@ -97,6 +97,43 @@ export function countUpOnEnter(root, ms = 2500) {
   setTimeout(() => { if (watch) { watch.disconnect(); watch = null; } }, ms);
 }
 
+// profile page (owner, 2026-11-25): your name, username and password; used by the shop and the panel
+export function renderProfile(m, user, onUser) {
+  m.innerHTML = `<div class="prof">
+    <div class="prof-head card"><div class="avatar" aria-hidden="true">${esc((user.name || "?").trim()[0] || "?")}</div><div><b>${esc(user.name)}</b><span class="muted">${user.role === "admin" ? "مدیر" : esc(user.city || "مشتری")}</span></div></div>
+    <form class="card prof-form" id="pfm" novalidate>
+      <h3>نام کاربری و رمز</h3>
+      <label class="field"><span>نام کاربری (انگلیسی)</span><input name="username" type="text" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(user.username)}" required></label>
+      <label class="field"><span>رمز جدید (اگر نمی‌خواهید عوض شود، خالی بگذارید)</span><input name="nw" type="password" dir="ltr" autocomplete="new-password" minlength="6"></label>
+      <label class="field"><span>تکرار رمز جدید</span><input name="nw2" type="password" dir="ltr" autocomplete="new-password"></label>
+      <label class="field"><span>رمز فعلی (برای تایید)</span><input name="old" type="password" dir="ltr" autocomplete="current-password" required></label>
+      <p class="err" role="alert"></p>
+      <button class="btn primary" type="submit">ذخیره</button>
+    </form></div>`;
+  const f = $("#pfm", m);
+  f.onsubmit = async e => {
+    e.preventDefault(); const err = $(".err", f); err.textContent = "";
+    const username = latin(f.username.value).trim().toLowerCase(), nw = latin(f.nw.value), nw2 = latin(f.nw2.value);
+    if (nw && nw !== nw2) return err.textContent = "رمز جدید و تکرارش یکی نیستند";
+    if (username === user.username && !nw) return err.textContent = "چیزی عوض نشده";
+    const b = $("button[type=submit]", f); b.disabled = true;
+    try {
+      const r = await api("/api/profile", { username, new: nw || undefined, old: latin(f.old.value) });
+      toast(nw ? "نام کاربری و رمز ذخیره شد" : "نام کاربری ذخیره شد"); onUser && onUser(r.user); renderProfile(m, r.user, onUser);
+    } catch (x) { err.textContent = x.message; } finally { b.disabled = false; }
+  };
+}
+
+// hamburger drawer used by both panels on phones
+export function drawer({ btn, panel, scrim }) {
+  const set = open => { panel.classList.toggle("open", open); scrim.hidden = !open; scrim.classList.toggle("on", open); btn.setAttribute("aria-expanded", open); panel.setAttribute("aria-hidden", !open); document.documentElement.classList.toggle("lock", open);
+ };
+  btn.onclick = () => set(!panel.classList.contains("open"));
+  scrim.onclick = () => set(false);
+  addEventListener("keydown", e => { if (e.key === "Escape" && panel.classList.contains("open")) { set(false); btn.focus(); } });
+  return { close: () => set(false) };
+}
+
 export const STATUS = { open: "پیش‌فاکتور", new: "در صف تایید", confirmed: "پیش‌فاکتور صادر شد", sent: "ارسال شده", done: "تحویل شده", cancelled: "لغو شده" };
 
 // Printable proforma / order. On iPhone, «چاپ» → share → save as PDF.

@@ -1,5 +1,6 @@
 // SAM customer app: products by category, cart → order or proforma, orders, festivals, invoices and balance.
-import { $, $$, esc, api, token, tokens, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, countUpOnEnter } from "./common.js?v=8";
+import { renderProfile, drawer } from "./common.js?v=10";
+import { $, $$, esc, api, token, tokens, fa, money, faDate, faDigits, latin, toast, STATUS, printDoc, countUpOnEnter } from "./common.js?v=10";
 import { offerLabel } from "./proforma.js?v=6";
 
 const S = { user: null, settings: {}, cats: [], products: [], festivals: [], orders: null, account: null, tab: "products", cat: "all", q: "", cart: {}, unseen: 0 };
@@ -19,9 +20,11 @@ const ICON = {
   festivals: '<path d="M20 12v8H4v-8M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/>',
   cart: '<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.6 12.4a2 2 0 0 0 2 1.6h8.8a2 2 0 0 0 2-1.6L22 7H6"/>',
   orders: '<path d="M8 3h8l3 3v15H5V3z"/><path d="M9 9h6M9 13h6M9 17h4"/>',
-  account: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+  account: '<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M3.5 9.5h17M7.5 14h4"/>',
+  profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+  out: '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10"/>',
 };
-const TABS = [["products", "محصولات"], ["festivals", "جشنواره"], ["cart", "سبد"], ["orders", "سفارش‌ها"], ["account", "حساب من"]];
+const TABS = [["products", "محصولات"], ["festivals", "جشنواره"], ["cart", "سبد خرید"], ["orders", "سفارش‌ها"], ["account", "فاکتورها و مانده"], ["profile", "پروفایل"]];
 
 // ---------- login ----------
 function loginView(msg = "") {
@@ -44,17 +47,30 @@ function loginView(msg = "") {
 }
 
 // ---------- shell ----------
+// top bar with a hamburger and the cart; the menu slides in from the side (owner, 2026-11-25: no bottom bar)
+let menu = null;
 function shell() {
-  app.innerHTML = `<header class="top"><span class="brand">${esc(S.settings.brand || "SAM")}</span><span class="who">${esc(S.user.name)}</span></header>
-    <main id="main"></main>
-    <nav class="tabs" aria-label="بخش‌ها">${TABS.map(([k, t]) => `<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${t}${k === "cart" ? '<span class="badge" id="cb" hidden></span>' : k === "orders" ? '<span class="badge" id="ob" hidden></span>' : ""}</button>`).join("")}</nav>`;
-  $$(".tabs button").forEach(b => b.onclick = () => go(b.dataset.tab));
+  app.innerHTML = `<header class="top">
+      <button class="hamb" id="hamb" type="button" aria-label="منو" aria-expanded="false" aria-controls="drawer"><i></i><i></i><i></i><span class="dot" id="hdot" hidden></span></button>
+      <span class="brand">${esc(S.settings.brand || "SAM")}</span><span class="ttl" id="ttl"></span>
+      <button class="cart-btn" id="cartBtn" type="button" aria-label="سبد خرید"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON.cart}</svg><span class="badge" id="cb" hidden></span></button></header>
+    <div class="scrim" id="scrim" hidden></div>
+    <aside class="drawer" id="drawer" aria-label="منو" aria-hidden="true">
+      <div class="dh"><div class="avatar" aria-hidden="true">${esc((S.user.name || "?").trim()[0] || "?")}</div><div><b>${esc(S.user.name)}</b><small>${esc(S.user.city || "")}</small></div></div>
+      <nav>${TABS.map(([k, t]) => `<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg><span>${t}</span>${k === "orders" ? '<span class="badge" id="ob" hidden></span>' : ""}</button>`).join("")}</nav>
+      <button class="out" type="button" id="dout"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON.out}</svg><span>خروج</span></button></aside>
+    <main id="main"></main>`;
+  menu = drawer({ btn: $("#hamb"), panel: $("#drawer"), scrim: $("#scrim") });
+  $$("#drawer [data-tab]").forEach(b => b.onclick = () => go(b.dataset.tab));
+  $("#cartBtn").onclick = () => go("cart");
+  $("#dout").onclick = async () => { try { await api("/api/logout", {}); } catch {} token.set(""); location.hash = ""; location.reload(); };
 }
 function go(tab) {
   S.tab = tab;
   history.replaceState(null, "", "#" + tab);
-  $$(".tabs button").forEach(b => b.dataset.tab === tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
-  ({ products: viewProducts, festivals: viewFestivals, cart: viewCart, orders: viewOrders, account: viewAccount })[tab]();
+  $$("#drawer [data-tab]").forEach(b => b.dataset.tab === tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+  $("#ttl").textContent = TABS.find(t => t[0] === tab)?.[1] || ""; menu?.close();
+  ({ products: viewProducts, festivals: viewFestivals, cart: viewCart, orders: viewOrders, account: viewAccount, profile: viewProfile })[tab]();
   window.scrollTo(0, 0);
   replay($("#main"), "enter");
   countUpOnEnter($("#main"));
@@ -158,7 +174,8 @@ function queuedNotice(o) {
   document.body.append(d); d.showModal();
   d.onclose = () => d.remove(); d.onclick = e => { if (e.target === d || e.target.closest("[data-x]")) d.close(); };
 }
-function ordersBadge(n) { const b = $("#ob"); if (!b) return; S.unseen = n; b.hidden = !n; b.textContent = fa(n); }
+function ordersBadge(n) { const b = $("#ob"); if (!b) return; S.unseen = n; b.hidden = !n; b.textContent = fa(n); const d = $("#hdot"); if (d) d.hidden = !n; }
+function viewProfile() { renderProfile($("#main"), S.user, u => { S.user = { ...S.user, ...u }; }); }
 async function viewOrders() {
   const m = $("#main");
   m.innerHTML = `<div class="h"><h2>سفارش‌ها</h2></div><div id="ol"><div class="loading" role="status" aria-label="در حال دریافت">در حال دریافت…</div></div>`;
@@ -241,21 +258,10 @@ async function viewAccount() {
     <div class="card" style="padding:4px 14px 8px;margin-bottom:14px"><h3 style="font-size:16px;margin:12px 0 2px">فاکتورهای من</h3>
       ${invoices.length ? invoices.map((i, k) => `<div class="inv" data-inv="${k}" role="button" tabindex="0" style="cursor:pointer"><div><b>${i.kind === "return" ? "برگشت از فروش" : "فاکتور"} ${esc(faDigits(i.no))}</b><div class="muted" style="font-size:12.5px">${i.date ? faDate(i.date, true) : esc(faDigits(i.date_raw))}</div></div><span class="a num" style="${i.kind === "return" ? "color:var(--ok)" : ""}">${money(i.amount, cur())}</span></div>`).join("") : `<p class="muted">فاکتوری ثبت نشده.</p>`}</div>
     <div class="card" style="padding:14px"><div class="muted" style="font-size:13px">${esc(S.user.name)}${S.user.city ? " · " + esc(S.user.city) : ""}<br>نام کاربری: <span dir="ltr">${esc(S.user.username)}</span></div>
-      <div class="row" style="margin-top:12px"><button class="btn" type="button" id="pw">تغییر رمز</button><button class="btn ghost danger" type="button" id="out">خروج</button></div></div>`;
+      <div class="row" style="margin-top:12px"><button class="btn" type="button" id="pw">پروفایل و رمز</button><button class="btn ghost danger" type="button" id="out">خروج</button></div></div>`;
   $$("[data-inv]").forEach(el => el.onclick = el.onkeydown = e => { if (e.type === "keydown" && e.key !== "Enter") return; openInvoice(invoices[+el.dataset.inv]); });
   $("#out").onclick = async () => { try { await api("/api/logout", {}); } catch {} token.set(""); location.hash = ""; location.reload(); };
-  $("#pw").onclick = () => {
-    const d = document.createElement("dialog");
-    d.innerHTML = `<form method="dialog" id="pf"><div class="dlg-head"><h3>تغییر رمز</h3></div>
-      <label class="field"><span>رمز فعلی</span><input name="old" type="password" autocomplete="current-password" dir="ltr" required></label>
-      <label class="field"><span>رمز جدید (حداقل ۶ حرف)</span><input name="nw" type="password" autocomplete="new-password" dir="ltr" minlength="6" required></label>
-      <div class="dlg-foot"><button class="btn primary" value="ok">ذخیره</button><button class="btn ghost" value="x" formnovalidate>انصراف</button></div></form>`;
-    document.body.append(d); d.showModal(); d.onclose = () => d.remove();
-    $("#pf", d).onsubmit = async e => {
-      if (e.submitter?.value !== "ok") return; e.preventDefault();
-      try { await api("/api/password", { old: latin(e.target.old.value), new: latin(e.target.nw.value) }); toast("رمز عوض شد"); d.close(); } catch (err) { toast(err.message, true); }
-    };
-  };
+  $("#pw").onclick = () => go("profile");
 }
 
 // an invoice from accounting: its lines, and print / PDF (owner, 2026-11-24)

@@ -181,6 +181,19 @@ export function createApp(db) {
     },
     "POST /api/logout": req => { const t = (req.headers.authorization || "").replace(/^Bearer /, ""); db.prepare("DELETE FROM sessions WHERE token=?").run(crypto.createHash("sha256").update(t).digest("hex")); return { ok: true }; },
     "GET /api/me": req => ({ user: pubUser(needUser(req)), settings: settings(db) }),
+    // profile (owner, 2026-11-25): change your own username and/or password; the current password is required
+    "POST /api/profile": (req, b) => {
+      const u = needUser(req);
+      if (!checkPass(b.old, u.pass)) fail(400, "رمز فعلی اشتباه است");
+      const username = String(b.username ?? u.username).trim().toLowerCase();
+      if (!/^[a-z0-9_.]{3,30}$/.test(username)) fail(400, "نام کاربری: ۳ تا ۳۰ حرف انگلیسی، عدد، نقطه یا _");
+      const dup = db.prepare("SELECT id FROM users WHERE username=?").get(username);
+      if (dup && dup.id !== u.id) fail(400, "این نام کاربری گرفته شده");
+      if (b.new && String(b.new).length < 6) fail(400, "رمز جدید حداقل ۶ حرف باشد");
+      db.prepare("UPDATE users SET username=? WHERE id=?").run(username, u.id);
+      if (b.new) db.prepare("UPDATE users SET pass=? WHERE id=?").run(hash(b.new), u.id);
+      return { user: pubUser(db.prepare("SELECT * FROM users WHERE id=?").get(u.id)) };
+    },
     "POST /api/password": (req, b) => {
       const u = needUser(req);
       if (!checkPass(b.old, u.pass)) fail(400, "رمز فعلی اشتباه است");
