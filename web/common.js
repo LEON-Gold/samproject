@@ -13,7 +13,7 @@ export const tokens = { admin: keyStore("sam.admin.token"), customer: keyStore("
 // GitHub Pages has no server: there the app runs on a demo backend inside the browser (demo.js), with sample data.
 export const DEMO = location.hostname.endsWith("github.io") || /[?&]demo\b/.test(location.search);
 let demoMod = null;
-const demo = () => demoMod || (demoMod = import(new URL("./demo.js?v=6", import.meta.url).href));
+const demo = () => demoMod || (demoMod = import(new URL("./demo.js?v=7", import.meta.url).href));
 if (DEMO) (async () => {
   const m = await demo();
   if (document.readyState === "loading") await new Promise(r => addEventListener("DOMContentLoaded", r));
