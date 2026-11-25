@@ -4,7 +4,7 @@
 import { buildProforma, suggestOffer } from "./proforma.js?v=6";
 import { parseDate, jalaliText } from "./jalali.js?v=6";
 
-const KEY = "sam.demo.db.v1";
+const KEY = "sam.demo.db.v2";
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
 const daysAgo = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
@@ -20,6 +20,7 @@ function seed() {
     prices: { A: a, B: Math.round(a * 1.06 / 1000) * 1000, C: Math.round(a * 1.15 / 1000) * 1000 }, updated: now() }));
   const users = [
     { id: 1, role: "admin", username: "admin", pass: "admin1234", name: "مدیر سام" },
+    { id: 4, role: "admin", username: "markazi", pass: "jyy76f5d", name: "امیرحسین مرکزی" }, // manager account for SAM's owner (2026-11-25)
     { id: 2, role: "customer", username: "demo", pass: "demo1234", name: "فروشگاه نمونه", contact: "", phone: "", city: "تهران", code: "1001", level: "A", margin: 18, offer: "product" },
     { id: 3, role: "customer", username: "demo2", pass: "demo1234", name: "عمده‌فروشی نمونه", contact: "", phone: "", city: "اصفهان", code: "1002", level: "B", margin: 12, offer: "none" },
   ].map(u => ({ contact: "", phone: "", city: "", code: "", level: "A", margin: 0, offer: "product", active: true, created: now(), ...u }));
@@ -36,7 +37,7 @@ function seed() {
     inv("3107", 2, "1001", 19, [L("دئودورانت (نمونه)", 24, 175000), L("کرم مرطوب‌کننده (نمونه)", 12, 290000)]),
     inv("3110", 3, "1002", 12, [L("شامپو بدن (نمونه)", 60, 244000)]), inv("B-15", 2, "1001", 2, [L("فوم اصلاح (نمونه)", 3, 185000)], "return")];
   return {
-    seq: { users: 3, cats: 5, products: products.length, orders: 2, festivals: 1 },
+    seq: { users: 4, cats: 5, products: products.length, orders: 2, festivals: 1 },
     settings: { brand: "SAM", currency: "تومان", levels: [{ k: "A", name: "نمایندگی" }, { k: "B", name: "عمده‌فروش" }, { k: "C", name: "مغازه" }], phone: "", proformaNote: "اعتبار پیش‌فاکتور تا پایان همان روز است.", taxPct: 10, marginPct: 0 },
     users, cats, products, orders, invoices,
     festivals: [{ id: 1, title: "جشنوارهٔ نمونه", poster: "", descr: "این یک جشنوارهٔ آزمایشی است؛ متن و شرایط واقعی را تیم سام وارد می‌کند.", min_amount: 50000000, start: daysAgo(3), end: daysAgo(-27), settle: "متن نمونه برای نحوهٔ تسویه", active: true }],
